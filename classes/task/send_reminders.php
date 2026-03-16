@@ -260,8 +260,8 @@ class send_reminders extends \core\task\scheduled_task {
 
         $message = strtr($message, $replacements);
 
-        $message .= html_writer::empty_tag('hr');
-        $message .= html_writer::tag('p',
+        $message .= \html_writer::empty_tag('hr');
+        $message .= \html_writer::tag('p',
             get_string('messagefooter', 'local_learningjourney', [
                 'activity' => $activityname,
                 'activityurl' => $activityurl->out(false),
@@ -337,8 +337,8 @@ class send_reminders extends \core\task\scheduled_task {
 
             $message .= \html_writer::table($table);
 
-            $message .= html_writer::empty_tag('hr');
-            $message .= html_writer::tag('p',
+            $message .= \html_writer::empty_tag('hr');
+            $message .= \html_writer::tag('p',
                 get_string('messagefooter', 'local_learningjourney', [
                     'activity' => $activityname,
                     'activityurl' => $activityurl->out(false),
