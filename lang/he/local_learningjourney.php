@@ -13,6 +13,7 @@ $string['completionfilter'] = 'סינון לפי';
 $string['filter_completed'] = 'רק למי שהשלים את הפעילות';
 $string['filter_notcompleted'] = 'רק למי שלא השלים את הפעילות';
 $string['filter_all'] = 'לכל הלומדים בקורס';
+$string['filter_oncomplete'] = 'לשלוח כאשר משתמש משלים את הפעילות (מהרגע שהוגדר)';
 $string['subject'] = 'נושא המייל';
 $string['message'] = 'הודעה אישית';
 $string['enabled'] = 'תזכורת פעילה';

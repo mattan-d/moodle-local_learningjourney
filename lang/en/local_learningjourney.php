@@ -13,6 +13,7 @@ $string['completionfilter'] = 'Filter by';
 $string['filter_completed'] = 'Only users who completed the activity';
 $string['filter_notcompleted'] = 'Only users who have not completed the activity';
 $string['filter_all'] = 'All enrolled users';
+$string['filter_oncomplete'] = 'When users complete the activity (from now on)';
 $string['subject'] = 'Email subject';
 $string['message'] = 'Personal message';
 $string['enabled'] = 'Enabled';

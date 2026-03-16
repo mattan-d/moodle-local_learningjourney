@@ -204,7 +204,7 @@ class send_reminders extends \core\task\scheduled_task {
 
         $iscomplete = !empty($data) && !empty($data->completionstate);
 
-        if ($filter === 'completed') {
+        if ($filter === 'completed' || $filter === 'oncomplete') {
             return $returnstate ? $iscomplete : $iscomplete;
         }
 

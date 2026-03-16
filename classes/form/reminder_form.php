@@ -41,6 +41,7 @@ class reminder_form extends moodleform {
             'completed' => get_string('filter_completed', 'local_learningjourney'),
             'notcompleted' => get_string('filter_notcompleted', 'local_learningjourney'),
             'all' => get_string('filter_all', 'local_learningjourney'),
+            'oncomplete' => get_string('filter_oncomplete', 'local_learningjourney'),
         ];
         $mform->addElement('select', 'completionfilter', get_string('completionfilter', 'local_learningjourney'), $options);
         $mform->setDefault('completionfilter', 'all');
