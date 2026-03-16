@@ -67,6 +67,9 @@ if ($mform->is_cancelled()) {
         $record->subject = $data->subject ?? null;
         $record->message = $data->message ?? null;
         $record->enabled = empty($data->enabled) ? 0 : 1;
+        $record->sendmanagers = empty($data->sendmanagers) ? 0 : 1;
+        $record->managersubject = $data->managersubject ?? null;
+        $record->managermessage = $data->managermessage ?? null;
         $record->timemodified = time();
 
         $DB->update_record('local_learningjourney', $record);
@@ -80,6 +83,9 @@ if ($mform->is_cancelled()) {
         $record->subject = $data->subject ?? null;
         $record->message = $data->message ?? null;
         $record->enabled = empty($data->enabled) ? 0 : 1;
+        $record->sendmanagers = empty($data->sendmanagers) ? 0 : 1;
+        $record->managersubject = $data->managersubject ?? null;
+        $record->managermessage = $data->managermessage ?? null;
         $record->sent = 0;
         $record->senttime = null;
         $record->timecreated = time();

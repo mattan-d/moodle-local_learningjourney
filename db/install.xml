@@ -13,6 +13,9 @@
                 <FIELD NAME="enabled" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false"/>
                 <FIELD NAME="sent" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Has this reminder already been sent"/>
                 <FIELD NAME="senttime" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Time when reminder was actually sent"/>
+                <FIELD NAME="sendmanagers" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Also send summary to managers"/>
+                <FIELD NAME="managersubject" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Subject for manager email"/>
+                <FIELD NAME="managermessage" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Body for manager email"/>
                 <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
                 <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
             </FIELDS>

@@ -27,6 +27,18 @@ $string['status_sent'] = 'Sent ({$a})';
 $string['status_notsent'] = 'Not sent yet';
 $string['actions'] = 'Actions';
 
+$string['managerheader'] = 'Manager notification';
+$string['sendmanagers'] = 'Also send summary email to managers';
+$string['managersubject'] = 'Manager email subject';
+$string['managermessage'] = 'Manager personal message';
+
+$string['defaultmanagersubject'] = 'Progress summary for your team in {$a->course}';
+$string['defaultmanagermessage'] = 'Here is an overview of the users you manage in this course.';
+$string['managerstatusheading'] = 'Learner progress for activity {$a->activity}';
+$string['managerstatus_complete'] = 'Completed';
+$string['managerstatus_notcomplete'] = 'Not completed';
+$string['managerprogress'] = 'Progress: {$a}%';
+
 $string['previewheading'] = 'Reminder email preview';
 $string['previewsubjectlabel'] = 'Subject:';
 $string['previewbodylabel'] = 'Body:';

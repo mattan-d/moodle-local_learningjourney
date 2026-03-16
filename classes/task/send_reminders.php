@@ -7,6 +7,7 @@ defined('MOODLE_INTERNAL') || die();
 use completion_info;
 use context_course;
 use moodle_url;
+use core_completion\progress;
 
 class send_reminders extends \core\task\scheduled_task {
 
@@ -68,8 +69,42 @@ class send_reminders extends \core\task\scheduled_task {
             'course' => format_string($course->fullname),
         ]);
 
+        // Prepare manager mapping based on custom profile field 'manager' (username).
+        $managersbyuser = [];
+        $managerusercache = [];
+
+        $managerfield = $DB->get_record('user_info_field', ['shortname' => 'manager'], '*', IGNORE_MISSING);
+        if ($managerfield) {
+            $userids = array_map(static function($u) {
+                return $u->id;
+            }, $users);
+
+            list($insql, $inparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
+            $params = $inparams + ['fieldid' => $managerfield->id];
+            $records = $DB->get_records_select('user_info_data', "fieldid = :fieldid AND userid {$insql}", $params);
+
+            foreach ($records as $rec) {
+                $managerusername = trim((string)$rec->data);
+                if ($managerusername === '') {
+                    continue;
+                }
+                if (!array_key_exists($managerusername, $managerusercache)) {
+                    $managerusercache[$managerusername] = $DB->get_record('user', [
+                        'username' => $managerusername,
+                        'deleted' => 0,
+                    ], '*', IGNORE_MISSING);
+                }
+                if ($managerusercache[$managerusername]) {
+                    $managersbyuser[$rec->userid] = $managerusercache[$managerusername];
+                }
+            }
+        }
+
+        $managerrows = [];
+
         foreach ($users as $user) {
-            if (!$this->user_matches_filter($completion, $cm, $user->id, $reminder->completionfilter)) {
+            $iscomplete = $this->user_matches_filter($completion, $cm, $user->id, $reminder->completionfilter, true);
+            if ($iscomplete === null) {
                 continue;
             }
 
@@ -82,6 +117,36 @@ class send_reminders extends \core\task\scheduled_task {
                 $subject,
                 $messagetext,
                 $messagehtml
+            );
+
+            // Collect data for manager summary if enabled and manager exists.
+            if (!empty($reminder->sendmanagers) && isset($managersbyuser[$user->id])) {
+                $manager = $managersbyuser[$user->id];
+
+                $progresspercent = progress::get_course_progress_percentage($course, $user->id);
+                if ($progresspercent === null) {
+                    $progresspercent = 0;
+                } else {
+                    $progresspercent = round($progresspercent);
+                }
+
+                $managerrows[$manager->id][] = (object)[
+                    'learner' => $user,
+                    'complete' => (bool)$iscomplete,
+                    'progress' => $progresspercent,
+                ];
+            }
+        }
+
+        // Send summary emails to each manager.
+        if (!empty($reminder->sendmanagers) && !empty($managerrows)) {
+            $this->send_manager_summaries(
+                $managerrows,
+                $reminder,
+                $course,
+                $cm,
+                $activityurl,
+                $courseurl
             );
         }
 
@@ -101,9 +166,9 @@ class send_reminders extends \core\task\scheduled_task {
      * @param string $filter
      * @return bool
      */
-    protected function user_matches_filter(completion_info $completion, $cm, int $userid, string $filter): bool {
+    protected function user_matches_filter(completion_info $completion, $cm, int $userid, string $filter, bool $returnstate = false) {
         if ($filter === 'all') {
-            return true;
+            return $returnstate ? true : true;
         }
 
         $data = $completion->get_data($cm, false, $userid);
@@ -111,14 +176,14 @@ class send_reminders extends \core\task\scheduled_task {
         $iscomplete = !empty($data) && !empty($data->completionstate);
 
         if ($filter === 'completed') {
-            return $iscomplete;
+            return $returnstate ? $iscomplete : $iscomplete;
         }
 
         if ($filter === 'notcompleted') {
-            return !$iscomplete;
+            return $returnstate ? !$iscomplete : !$iscomplete;
         }
 
-        return false;
+        return $returnstate ? null : false;
     }
 
     /**
@@ -167,6 +232,87 @@ class send_reminders extends \core\task\scheduled_task {
         );
 
         return $message;
+    }
+
+    /**
+     * Send summary emails to managers with learners' completion status and progress.
+     *
+     * @param array $managerrows managerid => array of row objects
+     * @param \stdClass $reminder
+     * @param \stdClass $course
+     * @param \cm_info|\stdClass $cm
+     * @param moodle_url $activityurl
+     * @param moodle_url $courseurl
+     * @return void
+     */
+    protected function send_manager_summaries(
+        array $managerrows,
+        \stdClass $reminder,
+        \stdClass $course,
+        $cm,
+        moodle_url $activityurl,
+        moodle_url $courseurl
+    ): void {
+        global $DB;
+
+        foreach ($managerrows as $managerid => $rows) {
+            $manager = $DB->get_record('user', ['id' => $managerid, 'deleted' => 0], '*', IGNORE_MISSING);
+            if (!$manager) {
+                continue;
+            }
+
+            $subject = $reminder->managersubject ?: get_string('defaultmanagersubject', 'local_learningjourney', [
+                'course' => format_string($course->fullname),
+            ]);
+
+            $message = $reminder->managermessage ?: get_string('defaultmanagermessage', 'local_learningjourney');
+
+            $message .= html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', [
+                'activity' => format_string($cm->name),
+            ]));
+
+            $table = new \html_table();
+            $table->head = [
+                get_string('fullname'),
+                get_string('status'),
+                get_string('completion', 'completion'),
+            ];
+
+            foreach ($rows as $row) {
+                $statusstr = $row->complete
+                    ? get_string('managerstatus_complete', 'local_learningjourney')
+                    : get_string('managerstatus_notcomplete', 'local_learningjourney');
+
+                $progressstr = get_string('managerprogress', 'local_learningjourney', $row->progress);
+
+                $table->data[] = new \html_table_row([
+                    fullname($row->learner),
+                    $statusstr,
+                    $progressstr,
+                ]);
+            }
+
+            $message .= \html_writer::table($table);
+
+            $message .= html_writer::empty_tag('hr');
+            $message .= html_writer::tag('p',
+                get_string('messagefooter', 'local_learningjourney', [
+                    'activity' => format_string($cm->name),
+                    'activityurl' => $activityurl->out(false),
+                    'courseurl' => $courseurl->out(false),
+                ])
+            );
+
+            $messagetext = html_to_text($message);
+
+            email_to_user(
+                $manager,
+                get_admin(),
+                $subject,
+                $messagetext,
+                $message
+            );
+        }
     }
 }
 
