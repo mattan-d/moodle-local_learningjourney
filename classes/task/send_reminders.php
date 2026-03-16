@@ -278,7 +278,7 @@ class send_reminders extends \core\task\scheduled_task {
      * @param \cm_info|\stdClass $cm
      * @param moodle_url $activityurl
      * @param moodle_url $courseurl
-     * @return void
+     * @return int Number of manager emails sent
      */
     protected function send_manager_summaries(
         array $managerrows,
@@ -287,8 +287,10 @@ class send_reminders extends \core\task\scheduled_task {
         $cm,
         moodle_url $activityurl,
         moodle_url $courseurl
-    ): void {
+    ): int {
         global $DB;
+
+        $sent = 0;
 
         foreach ($managerrows as $managerid => $rows) {
             $manager = $DB->get_record('user', ['id' => $managerid, 'deleted' => 0], '*', IGNORE_MISSING);
@@ -350,7 +352,10 @@ class send_reminders extends \core\task\scheduled_task {
                 $messagetext,
                 $message
             );
+            $sent++;
         }
+
+        return $sent;
     }
 
     /**

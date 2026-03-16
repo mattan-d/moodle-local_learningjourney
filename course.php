@@ -427,6 +427,7 @@ if (!empty($reminders)) {
         get_string('targettype', 'local_learningjourney'),
         get_string('completionfilter', 'local_learningjourney'),
         get_string('status', 'local_learningjourney'),
+            get_string('sentcount', 'local_learningjourney'),
         get_string('actions', 'local_learningjourney'),
     ];
 
@@ -492,6 +493,7 @@ if (!empty($reminders)) {
             $target,
             $filterstr,
             $status,
+            (string)($reminder->sentcount ?? 0),
             $actionshtml,
         ]);
 
