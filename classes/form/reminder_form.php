@@ -27,8 +27,12 @@ class reminder_form extends moodleform {
 
         $mform->addElement('header', 'general', get_string('remindersettings', 'local_learningjourney'));
 
-        $mform->addElement('select', 'cmid', get_string('activity', 'local_learningjourney'), $modoptions);
+        // Add "all activities in course" as default option.
+        $activityoptions = [0 => get_string('activity_all', 'local_learningjourney')] + $modoptions;
+
+        $mform->addElement('select', 'cmid', get_string('activity', 'local_learningjourney'), $activityoptions);
         $mform->addRule('cmid', null, 'required', null, 'client');
+        $mform->setDefault('cmid', 0);
 
         $mform->addElement('date_time_selector', 'timetosend', get_string('timetosend', 'local_learningjourney'));
         $mform->addRule('timetosend', null, 'required', null, 'client');

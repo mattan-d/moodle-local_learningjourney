@@ -1,6 +1,7 @@
 <?php
 
 require('../../config.php');
+require_once($CFG->libdir . '/completionlib.php');
 
 $courseid = required_param('id', PARAM_INT);
 
@@ -32,6 +33,20 @@ require_once(__DIR__ . '/classes/form/reminder_form.php');
 
 $reminderid = optional_param('reminderid', 0, PARAM_INT);
 $previewexistingid = optional_param('previewid', 0, PARAM_INT);
+$deleteid = optional_param('deleteid', 0, PARAM_INT);
+
+// Handle delete action (with sesskey protection).
+if ($deleteid && confirm_sesskey()) {
+    if ($todelete = $DB->get_record('local_learningjourney', ['id' => $deleteid, 'courseid' => $course->id], '*', IGNORE_MISSING)) {
+        $DB->delete_records('local_learningjourney', ['id' => $deleteid]);
+        redirect(
+            new moodle_url('/local/learningjourney/course.php', ['id' => $course->id]),
+            get_string('deleted', 'moodle'),
+            null,
+            \core\output\notification::NOTIFY_SUCCESS
+        );
+    }
+}
 
 $mform = new \local_learningjourney\form\reminder_form(null, [
     'modoptions' => $modoptions,
@@ -108,9 +123,7 @@ echo $OUTPUT->notification(get_string('reminder_help', 'local_learningjourney'),
 if ($previewdata) {
     global $USER, $SITE;
 
-    if (!isset($cms[$previewdata->cmid])) {
-        // Invalid activity selected – skip preview.
-    } else {
+    if (!empty($previewdata->cmid) && isset($cms[$previewdata->cmid])) {
         $cm = $cms[$previewdata->cmid];
 
         $activityurl = new moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]);
@@ -156,36 +169,25 @@ if ($previewdata) {
         echo html_writer::tag('p', html_writer::tag('strong', get_string('previewbodylabel', 'local_learningjourney')));
         echo html_writer::div($message);
         echo html_writer::end_div();
-    }
-}
-
-// Preview from existing reminder row (without using the form).
-if ($previewexistingid && !$previewdata) {
-    global $USER, $SITE;
-
-    $reminder = $DB->get_record('local_learningjourney', ['id' => $previewexistingid, 'courseid' => $course->id], '*', IGNORE_MISSING);
-    if ($reminder && isset($cms[$reminder->cmid])) {
-        $cm = $cms[$reminder->cmid];
-
-        $activityurl = new moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]);
+    } else {
+        // Preview for "all activities in course" (cmid = 0).
         $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
 
-        $subject = !empty($reminder->subject)
-            ? $reminder->subject
-            : get_string('defaultsubject', 'local_learningjourney', [
-                'activity' => format_string($cm->name),
+        $subject = !empty($previewdata->subject)
+            ? $previewdata->subject
+            : get_string('defaultsubject_course', 'local_learningjourney', [
                 'course' => format_string($course->fullname),
             ]);
 
-        $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
+        $message = $previewdata->message ?? get_string('defaultmessage', 'local_learningjourney');
 
         $replacements = [
             '{{fullname}}' => fullname($USER),
             '{{firstname}}' => $USER->firstname,
             '{{lastname}}' => $USER->lastname,
-            '{{activityname}}' => format_string($cm->name),
+            '{{activityname}}' => get_string('allactivities', 'local_learningjourney'),
             '{{coursename}}' => format_string($course->fullname),
-            '{{activityurl}}' => $activityurl->out(false),
+            '{{activityurl}}' => $courseurl->out(false),
             '{{courseurl}}' => $courseurl->out(false),
             '{{sitename}}' => format_string($SITE->shortname ?? $SITE->fullname ?? ''),
         ];
@@ -195,10 +197,61 @@ if ($previewexistingid && !$previewdata) {
         $message .= html_writer::empty_tag('hr');
         $message .= html_writer::tag('p',
             get_string('messagefooter', 'local_learningjourney', [
-                'activity' => format_string($cm->name),
-                'activityurl' => $activityurl->out(false),
+                'activity' => get_string('allactivities', 'local_learningjourney'),
+                'activityurl' => $courseurl->out(false),
                 'courseurl' => $courseurl->out(false),
             ])
+        );
+
+        // Append per-activity status table and overall progress for the current user.
+        $completion = new completion_info($course);
+        $modinfo = get_fast_modinfo($course);
+        $cmsall = $modinfo->get_cms();
+
+        $table = new html_table();
+        $table->head = [
+            get_string('activity', 'local_learningjourney'),
+            get_string('status'),
+        ];
+
+        foreach ($cmsall as $cmitem) {
+            if (!$cmitem->uservisible) {
+                continue;
+            }
+            if (!$completion->is_enabled($cmitem)) {
+                continue;
+            }
+
+            $data = $completion->get_data($cmitem, false, $USER->id);
+            $iscomplete = !empty($data) && !empty($data->completionstate);
+
+            $statusstr = $iscomplete
+                ? get_string('managerstatus_complete', 'local_learningjourney')
+                : get_string('managerstatus_notcomplete', 'local_learningjourney');
+
+            $table->data[] = new html_table_row([
+                format_string($cmitem->name),
+                $statusstr,
+            ]);
+        }
+
+        if (!empty($table->data)) {
+            $message .= html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', [
+                'activity' => get_string('allactivities', 'local_learningjourney'),
+            ]));
+            $message .= html_writer::table($table);
+        }
+
+        $progresspercent = \core_completion\progress::get_course_progress_percentage($course, $USER->id);
+        if ($progresspercent === null) {
+            $progresspercent = 0;
+        } else {
+            $progresspercent = round($progresspercent);
+        }
+
+        $message .= html_writer::tag(
+            'p',
+            get_string('managerprogress', 'local_learningjourney', $progresspercent)
         );
 
         echo html_writer::tag('h3', get_string('previewheading', 'local_learningjourney'));
@@ -210,6 +263,156 @@ if ($previewexistingid && !$previewdata) {
         echo html_writer::tag('p', html_writer::tag('strong', get_string('previewbodylabel', 'local_learningjourney')));
         echo html_writer::div($message);
         echo html_writer::end_div();
+    }
+}
+
+// Preview from existing reminder row (without using the form).
+if ($previewexistingid && !$previewdata) {
+    global $USER, $SITE;
+
+    $reminder = $DB->get_record('local_learningjourney', ['id' => $previewexistingid, 'courseid' => $course->id], '*', IGNORE_MISSING);
+    if ($reminder) {
+        if (!empty($reminder->cmid) && isset($cms[$reminder->cmid])) {
+            $cm = $cms[$reminder->cmid];
+
+            $activityurl = new moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]);
+            $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
+
+            $subject = !empty($reminder->subject)
+                ? $reminder->subject
+                : get_string('defaultsubject', 'local_learningjourney', [
+                    'activity' => format_string($cm->name),
+                    'course' => format_string($course->fullname),
+                ]);
+
+            $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
+
+            $replacements = [
+                '{{fullname}}' => fullname($USER),
+                '{{firstname}}' => $USER->firstname,
+                '{{lastname}}' => $USER->lastname,
+                '{{activityname}}' => format_string($cm->name),
+                '{{coursename}}' => format_string($course->fullname),
+                '{{activityurl}}' => $activityurl->out(false),
+                '{{courseurl}}' => $courseurl->out(false),
+                '{{sitename}}' => format_string($SITE->shortname ?? $SITE->fullname ?? ''),
+            ];
+
+            $message = strtr($message, $replacements);
+
+            $message .= html_writer::empty_tag('hr');
+            $message .= html_writer::tag('p',
+                get_string('messagefooter', 'local_learningjourney', [
+                    'activity' => format_string($cm->name),
+                    'activityurl' => $activityurl->out(false),
+                    'courseurl' => $courseurl->out(false),
+                ])
+            );
+
+            echo html_writer::tag('h3', get_string('previewheading', 'local_learningjourney'));
+            echo html_writer::start_div('box generalbox');
+            echo html_writer::tag('p',
+                html_writer::tag('strong', get_string('previewsubjectlabel', 'local_learningjourney') . ' ') .
+                s($subject)
+            );
+            echo html_writer::tag('p', html_writer::tag('strong', get_string('previewbodylabel', 'local_learningjourney')));
+            echo html_writer::div($message);
+            echo html_writer::end_div();
+        } else {
+            // Existing reminder preview for "all activities".
+            $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
+
+            $subject = !empty($reminder->subject)
+                ? $reminder->subject
+                : get_string('defaultsubject_course', 'local_learningjourney', [
+                    'course' => format_string($course->fullname),
+                ]);
+
+            $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
+
+            $replacements = [
+                '{{fullname}}' => fullname($USER),
+                '{{firstname}}' => $USER->firstname,
+                '{{lastname}}' => $USER->lastname,
+                '{{activityname}}' => get_string('allactivities', 'local_learningjourney'),
+                '{{coursename}}' => format_string($course->fullname),
+                '{{activityurl}}' => $courseurl->out(false),
+                '{{courseurl}}' => $courseurl->out(false),
+                '{{sitename}}' => format_string($SITE->shortname ?? $SITE->fullname ?? ''),
+            ];
+
+            $message = strtr($message, $replacements);
+
+            $message .= html_writer::empty_tag('hr');
+            $message .= html_writer::tag('p',
+                get_string('messagefooter', 'local_learningjourney', [
+                    'activity' => get_string('allactivities', 'local_learningjourney'),
+                    'activityurl' => $courseurl->out(false),
+                    'courseurl' => $courseurl->out(false),
+                ])
+            );
+
+            // Append per-activity status table and overall progress for the current user.
+            $completion = new completion_info($course);
+            $modinfo = get_fast_modinfo($course);
+            $cmsall = $modinfo->get_cms();
+
+            $table = new html_table();
+            $table->head = [
+                get_string('activity', 'local_learningjourney'),
+                get_string('status'),
+            ];
+
+            foreach ($cmsall as $cmitem) {
+                if (!$cmitem->uservisible) {
+                    continue;
+                }
+                if (!$completion->is_enabled($cmitem)) {
+                    continue;
+                }
+
+                $data = $completion->get_data($cmitem, false, $USER->id);
+                $iscomplete = !empty($data) && !empty($data->completionstate);
+
+                $statusstr = $iscomplete
+                    ? get_string('managerstatus_complete', 'local_learningjourney')
+                    : get_string('managerstatus_notcomplete', 'local_learningjourney');
+
+                $table->data[] = new html_table_row([
+                    format_string($cmitem->name),
+                    $statusstr,
+                ]);
+            }
+
+            if (!empty($table->data)) {
+                $message .= html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', [
+                    'activity' => get_string('allactivities', 'local_learningjourney'),
+                ]));
+                $message .= html_writer::table($table);
+            }
+
+            $progresspercent = \core_completion\progress::get_course_progress_percentage($course, $USER->id);
+            if ($progresspercent === null) {
+                $progresspercent = 0;
+            } else {
+                $progresspercent = round($progresspercent);
+            }
+
+            $message .= html_writer::tag(
+                'p',
+                get_string('managerprogress', 'local_learningjourney', $progresspercent)
+            );
+
+            echo html_writer::tag('h3', get_string('previewheading', 'local_learningjourney'));
+            echo html_writer::start_div('box generalbox');
+            echo html_writer::tag('p',
+                html_writer::tag('strong', get_string('previewsubjectlabel', 'local_learningjourney') . ' ') .
+                s($subject)
+            );
+            echo html_writer::tag('p', html_writer::tag('strong', get_string('previewbodylabel', 'local_learningjourney')));
+            echo html_writer::div($message);
+            echo html_writer::end_div();
+        }
     }
 }
 
@@ -228,7 +431,11 @@ if (!empty($reminders)) {
     ];
 
     foreach ($reminders as $reminder) {
-        $activityname = isset($modoptions[$reminder->cmid]) ? $modoptions[$reminder->cmid] : $reminder->cmid;
+        if (empty($reminder->cmid)) {
+            $activityname = get_string('activity_all', 'local_learningjourney');
+        } else {
+            $activityname = isset($modoptions[$reminder->cmid]) ? $modoptions[$reminder->cmid] : $reminder->cmid;
+        }
 
         $target = (!empty($reminder->targettype) && $reminder->targettype === 'manager')
             ? get_string('target_manager', 'local_learningjourney')
@@ -250,6 +457,11 @@ if (!empty($reminders)) {
             'id' => $course->id,
             'reminderid' => $reminder->id,
         ]);
+        $deleteurl = new moodle_url('/local/learningjourney/course.php', [
+            'id' => $course->id,
+            'deleteid' => $reminder->id,
+            'sesskey' => sesskey(),
+        ]);
 
         // Use Moodle core-style icon actions (like standard edit/delete icons).
         $previewicon = $OUTPUT->action_icon(
@@ -265,8 +477,14 @@ if (!empty($reminders)) {
             null,
             ['class' => 'action-icon']
         );
+        $deleteicon = $OUTPUT->action_icon(
+            $deleteurl,
+            new pix_icon('t/delete', get_string('delete', 'local_learningjourney')),
+            null,
+            ['class' => 'action-icon']
+        );
 
-        $actionshtml = html_writer::span($previewicon . ' ' . $editicon, 'actions');
+        $actionshtml = html_writer::span($previewicon . ' ' . $editicon . ' ' . $deleteicon, 'actions');
 
         $row = new html_table_row([
             $activityname,

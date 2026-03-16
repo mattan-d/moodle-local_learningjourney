@@ -48,8 +48,12 @@ class send_reminders extends \core\task\scheduled_task {
             return;
         }
 
-        if (!$cm = get_coursemodule_from_id(null, $reminder->cmid, 0, false, IGNORE_MISSING)) {
-            return;
+        $cm = null;
+        if (!empty($reminder->cmid)) {
+            $cm = get_coursemodule_from_id(null, $reminder->cmid, 0, false, IGNORE_MISSING);
+            if (!$cm) {
+                return;
+            }
         }
 
         $context = context_course::instance($course->id);
@@ -61,13 +65,20 @@ class send_reminders extends \core\task\scheduled_task {
 
         $completion = new completion_info($course);
 
-        $activityurl = new moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]);
         $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
-
-        $subject = $reminder->subject ?: get_string('defaultsubject', 'local_learningjourney', [
-            'activity' => format_string($cm->name),
-            'course' => format_string($course->fullname),
-        ]);
+        if ($cm) {
+            $activityurl = new moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]);
+            $subject = $reminder->subject ?: get_string('defaultsubject', 'local_learningjourney', [
+                'activity' => format_string($cm->name),
+                'course' => format_string($course->fullname),
+            ]);
+        } else {
+            // Reminder for all activities in course.
+            $activityurl = $courseurl;
+            $subject = $reminder->subject ?: get_string('defaultsubject_course', 'local_learningjourney', [
+                'course' => format_string($course->fullname),
+            ]);
+        }
 
         $managerrows = [];
         $managersbyuser = [];
@@ -107,14 +118,25 @@ class send_reminders extends \core\task\scheduled_task {
         }
 
         foreach ($users as $user) {
-            $iscomplete = $this->user_matches_filter($completion, $cm, $user->id, $reminder->completionfilter, true);
-            if ($iscomplete === null) {
-                continue;
+            if ($cm) {
+                $iscomplete = $this->user_matches_filter($completion, $cm, $user->id, $reminder->completionfilter, true);
+                if ($iscomplete === null) {
+                    continue;
+                }
+            } else {
+                // For "all activities" we ignore per-activity completion filter and always include the user.
+                $iscomplete = null;
             }
 
             if (empty($reminder->targettype) || $reminder->targettype === 'student') {
                 // Send to student.
                 $messagehtml = $this->render_message($reminder->message, $user, $course, $cm, $activityurl, $courseurl);
+
+                // If this reminder is for "all activities in course", append per-activity status table for this learner.
+                if (!$cm) {
+                    $messagehtml .= $this->build_activity_status_table($course, $completion, $user->id);
+                }
+
                 $messagetext = html_to_text($messagehtml);
 
                 email_to_user(
@@ -216,11 +238,13 @@ class send_reminders extends \core\task\scheduled_task {
 
         $message = $rawmessage ?? get_string('defaultmessage', 'local_learningjourney');
 
+        $activityname = $cm ? format_string($cm->name) : get_string('allactivities', 'local_learningjourney');
+
         $replacements = [
             '{{fullname}}' => fullname($user),
             '{{firstname}}' => $user->firstname,
             '{{lastname}}' => $user->lastname,
-            '{{activityname}}' => format_string($cm->name),
+            '{{activityname}}' => $activityname,
             '{{coursename}}' => format_string($course->fullname),
             '{{activityurl}}' => $activityurl->out(false),
             '{{courseurl}}' => $courseurl->out(false),
@@ -232,7 +256,7 @@ class send_reminders extends \core\task\scheduled_task {
         $message .= html_writer::empty_tag('hr');
         $message .= html_writer::tag('p',
             get_string('messagefooter', 'local_learningjourney', [
-                'activity' => format_string($cm->name),
+                'activity' => $activityname,
                 'activityurl' => $activityurl->out(false),
                 'courseurl' => $courseurl->out(false),
             ])
@@ -275,8 +299,10 @@ class send_reminders extends \core\task\scheduled_task {
 
             $message = $reminder->message ?: get_string('defaultmanagermessage', 'local_learningjourney');
 
+            $activityname = $cm ? format_string($cm->name) : get_string('allactivities', 'local_learningjourney');
+
             $message .= html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', [
-                'activity' => format_string($cm->name),
+                'activity' => $activityname,
             ]));
 
             $table = new \html_table();
@@ -305,7 +331,7 @@ class send_reminders extends \core\task\scheduled_task {
             $message .= html_writer::empty_tag('hr');
             $message .= html_writer::tag('p',
                 get_string('messagefooter', 'local_learningjourney', [
-                    'activity' => format_string($cm->name),
+                    'activity' => $activityname,
                     'activityurl' => $activityurl->out(false),
                     'courseurl' => $courseurl->out(false),
                 ])
@@ -321,6 +347,76 @@ class send_reminders extends \core\task\scheduled_task {
                 $message
             );
         }
+    }
+
+    /**
+     * Build a status table for all activities in the course for a specific learner,
+     * including overall course progress at the end.
+     *
+     * Used when the reminder is configured for "all activities in course".
+     *
+     * @param \stdClass $course
+     * @param completion_info $completion
+     * @param int $userid
+     * @return string HTML fragment
+     */
+    protected function build_activity_status_table(
+        \stdClass $course,
+        completion_info $completion,
+        int $userid
+    ): string {
+        $modinfo = get_fast_modinfo($course);
+        $cms = $modinfo->get_cms();
+
+        $table = new \html_table();
+        $table->head = [
+            get_string('activity', 'local_learningjourney'),
+            get_string('status'),
+        ];
+
+        foreach ($cms as $cm) {
+            if (!$cm->uservisible) {
+                continue;
+            }
+            if (!$completion->is_enabled($cm)) {
+                continue;
+            }
+
+            $data = $completion->get_data($cm, false, $userid);
+            $iscomplete = !empty($data) && !empty($data->completionstate);
+
+            $statusstr = $iscomplete
+                ? get_string('managerstatus_complete', 'local_learningjourney')
+                : get_string('managerstatus_notcomplete', 'local_learningjourney');
+
+            $table->data[] = new \html_table_row([
+                format_string($cm->name),
+                $statusstr,
+            ]);
+        }
+
+        $html = '';
+
+        if (!empty($table->data)) {
+            $html .= \html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', [
+                'activity' => get_string('allactivities', 'local_learningjourney'),
+            ]));
+            $html .= \html_writer::table($table);
+        }
+
+        $progresspercent = progress::get_course_progress_percentage($course, $userid);
+        if ($progresspercent === null) {
+            $progresspercent = 0;
+        } else {
+            $progresspercent = round($progresspercent);
+        }
+
+        $html .= \html_writer::tag(
+            'p',
+            get_string('managerprogress', 'local_learningjourney', $progresspercent)
+        );
+
+        return $html;
     }
 }
 

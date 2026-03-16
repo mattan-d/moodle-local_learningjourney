@@ -7,8 +7,9 @@ $string['task_sendreminders'] = 'Send Learning Journey reminders';
 
 $string['remindersettings'] = 'Reminder settings';
 $string['activity'] = 'Activity';
+$string['activity_all'] = 'All activities in this course';
 $string['timetosend'] = 'Time to send reminder';
-$string['completionfilter'] = 'Target users';
+$string['completionfilter'] = 'Filter by';
 $string['filter_completed'] = 'Only users who completed the activity';
 $string['filter_notcompleted'] = 'Only users who have not completed the activity';
 $string['filter_all'] = 'All enrolled users';
@@ -17,6 +18,7 @@ $string['message'] = 'Personal message';
 $string['enabled'] = 'Enabled';
 $string['preview'] = 'Preview email';
 $string['edit'] = 'Edit';
+$string['delete'] = 'Delete';
 
 $string['remindersaved'] = 'Reminder saved successfully.';
 $string['reminder_help'] = 'Create a reminder for a specific activity in this course. The reminder will be sent by email at the configured time, with a direct link to the activity and the course.';
@@ -28,7 +30,7 @@ $string['status_notsent'] = 'Not sent yet';
 $string['actions'] = 'Actions';
 
 $string['managerheader'] = 'Reminder type';
-$string['targettype'] = 'Reminder type';
+$string['targettype'] = 'Send to';
 $string['target_student'] = 'Students';
 $string['target_manager'] = 'Managers';
 $string['managerstatusheading'] = 'Learner progress for activity {$a->activity}';
@@ -41,6 +43,9 @@ $string['previewsubjectlabel'] = 'Subject:';
 $string['previewbodylabel'] = 'Body:';
 
 $string['defaultsubject'] = 'Reminder: {$a->activity} in course {$a->course}';
+$string['defaultsubject_course'] = 'Reminder: activities in course {$a->course}';
 $string['defaultmessage'] = 'You have a pending activity in your Learning Journey.';
 $string['messagefooter'] = 'Activity: {$a->activity} ({$a->activityurl}) - Course page: {$a->courseurl}';
+
+$string['allactivities'] = 'All activities';
 
