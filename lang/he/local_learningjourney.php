@@ -19,6 +19,11 @@ $string['enabled'] = 'תזכורת פעילה';
 $string['remindersaved'] = 'התזכורת נשמרה בהצלחה.';
 $string['reminder_help'] = 'כאן ניתן להגדיר תזכורת לפעילות מסוימת בקורס. התזכורת תישלח במייל למשתמשים בהתאם לסינון שבחרת, כולל שם הפעילות וקישורים ישירים לפעילות ולקורס.';
 
+$string['reminderlist'] = 'תזכורות קיימות בקורס';
+$string['status'] = 'סטטוס';
+$string['status_sent'] = 'נשלחה ({$a})';
+$string['status_notsent'] = 'טרם נשלחה';
+
 $string['defaultsubject'] = 'תזכורת: {$a->activity} בקורס {$a->course}';
 $string['defaultmessage'] = 'ממתינה לך פעילות במסגרת מסע הלמידה שלך.';
 $string['messagefooter'] = 'פעילות: {$a->activity} ({$a->activityurl}) - דף הקורס: {$a->courseurl}';

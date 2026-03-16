@@ -32,6 +32,7 @@ require_once(__DIR__ . '/classes/form/reminder_form.php');
 
 $mform = new \local_learningjourney\form\reminder_form(null, [
     'modoptions' => $modoptions,
+    'courseid' => $course->id,
 ]);
 
 if ($mform->is_cancelled()) {
@@ -65,6 +66,44 @@ echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('pluginname', 'local_learningjourney'));
 
 echo $OUTPUT->notification(get_string('reminder_help', 'local_learningjourney'), \core\output\notification::NOTIFY_INFO);
+
+// Show existing reminders for this course.
+global $DB;
+$reminders = $DB->get_records('local_learningjourney', ['courseid' => $course->id], 'timetosend ASC');
+
+if (!empty($reminders)) {
+    $table = new html_table();
+    $table->head = [
+        get_string('activity', 'local_learningjourney'),
+        get_string('timetosend', 'local_learningjourney'),
+        get_string('completionfilter', 'local_learningjourney'),
+        get_string('status', 'local_learningjourney'),
+    ];
+
+    foreach ($reminders as $reminder) {
+        $activityname = isset($modoptions[$reminder->cmid]) ? $modoptions[$reminder->cmid] : $reminder->cmid;
+
+        $filterstr = get_string('filter_' . $reminder->completionfilter, 'local_learningjourney');
+
+        if (!empty($reminder->sent)) {
+            $status = get_string('status_sent', 'local_learningjourney', userdate($reminder->senttime));
+        } else {
+            $status = get_string('status_notsent', 'local_learningjourney');
+        }
+
+        $row = new html_table_row([
+            $activityname,
+            userdate($reminder->timetosend),
+            $filterstr,
+            $status,
+        ]);
+
+        $table->data[] = $row;
+    }
+
+    echo html_writer::tag('h3', get_string('reminderlist', 'local_learningjourney'));
+    echo html_writer::table($table);
+}
 
 $mform->display();
 

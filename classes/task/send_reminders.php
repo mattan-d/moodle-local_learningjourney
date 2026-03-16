@@ -21,8 +21,8 @@ class send_reminders extends \core\task\scheduled_task {
 
         $reminders = $DB->get_records_select(
             'local_learningjourney',
-            'enabled = :enabled AND timetosend <= :now',
-            ['enabled' => 1, 'now' => $now]
+            'enabled = :enabled AND sent = :sent AND timetosend <= :now',
+            ['enabled' => 1, 'sent' => 0, 'now' => $now]
         );
 
         if (empty($reminders)) {
@@ -85,8 +85,9 @@ class send_reminders extends \core\task\scheduled_task {
             );
         }
 
-        // Disable reminder after it has been processed once.
-        $reminder->enabled = 0;
+        // Mark reminder as sent (single-run reminder).
+        $reminder->sent = 1;
+        $reminder->senttime = time();
         $reminder->timemodified = time();
         $DB->update_record('local_learningjourney', $reminder);
     }

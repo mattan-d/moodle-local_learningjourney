@@ -11,12 +11,15 @@ use moodleform;
 class reminder_form extends moodleform {
 
     public function definition() {
-        global $COURSE;
-
         $mform = $this->_form;
         $customdata = $this->_customdata ?? [];
 
         $modoptions = $customdata['modoptions'] ?? [];
+        $courseid = $customdata['courseid'] ?? 0;
+
+        // Keep course id in the form so it is always posted back.
+        $mform->addElement('hidden', 'id', $courseid);
+        $mform->setType('id', PARAM_INT);
 
         $mform->addElement('header', 'general', get_string('remindersettings', 'local_learningjourney'));
 
