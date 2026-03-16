@@ -29,6 +29,7 @@ $string['status'] = 'Status';
 $string['status_sent'] = 'Sent ({$a})';
 $string['status_notsent'] = 'Not sent yet';
 $string['actions'] = 'Actions';
+$string['sentcount'] = 'Emails sent';
 
 $string['managerheader'] = 'Reminder type';
 $string['targettype'] = 'Send to';

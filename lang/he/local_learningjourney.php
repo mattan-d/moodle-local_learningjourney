@@ -29,6 +29,7 @@ $string['status'] = 'סטטוס';
 $string['status_sent'] = 'נשלחה ({$a})';
 $string['status_notsent'] = 'טרם נשלחה';
 $string['actions'] = 'פעולות';
+$string['sentcount'] = 'כמות נמענים';
 
 $string['managerheader'] = 'למי לשלוח';
 $string['targettype'] = 'למי לשלוח';

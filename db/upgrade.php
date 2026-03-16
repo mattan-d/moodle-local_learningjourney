@@ -67,6 +67,18 @@ function xmldb_local_learningjourney_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026031603, 'local', 'learningjourney');
     }
 
+    // Add sentcount field to track how many users received each reminder.
+    if ($oldversion < 2026031604) {
+        $table = new xmldb_table('local_learningjourney');
+        $fieldsentcount = new xmldb_field('sentcount', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'senttime');
+
+        if (!$dbman->field_exists($table, $fieldsentcount)) {
+            $dbman->add_field($table, $fieldsentcount);
+        }
+
+        upgrade_plugin_savepoint(true, 2026031604, 'local', 'learningjourney');
+    }
+
     return true;
 }
 
