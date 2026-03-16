@@ -6,6 +6,6 @@ $plugin->component = 'local_learningjourney';
 $plugin->version   = 2026031604;          // YYYYMMDDXX.
 $plugin->release   = '1.0.0';
 $plugin->maturity  = MATURITY_ALPHA;
-$plugin->requires  = 2022041900;         // Minimum required Moodle version (4.0).
+$plugin->requires  = 2024042200;         // Minimum required Moodle version (4.0).
 $plugin->cron      = 0;
 
