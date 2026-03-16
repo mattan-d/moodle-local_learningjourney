@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/learningjourney/db" VERSION="2026031600" COMMENT="Learning Journey plugin tables" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd">
+    <TABLES>
+        <TABLE NAME="local_learningjourney" COMMENT="Reminder definitions for Learning Journey">
+            <FIELDS>
+                <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+                <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+                <FIELD NAME="cmid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Course module id"/>
+                <FIELD NAME="timetosend" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Time when reminder should be sent"/>
+                <FIELD NAME="completionfilter" TYPE="char" LENGTH="20" NOTNULL="true" SEQUENCE="false" COMMENT="completed, notcompleted, all"/>
+                <FIELD NAME="subject" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false"/>
+                <FIELD NAME="message" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+                <FIELD NAME="enabled" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false"/>
+                <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+                <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+            </FIELDS>
+            <KEYS>
+                <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+            </KEYS>
+            <INDEXES>
+                <INDEX NAME="courseid_cmid_ix" UNIQUE="false" FIELDS="courseid, cmid"/>
+                <INDEX NAME="timetosend_ix" UNIQUE="false" FIELDS="timetosend"/>
+            </INDEXES>
+        </TABLE>
+    </TABLES>
+</XMLDB>
+
