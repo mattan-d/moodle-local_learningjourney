@@ -4,6 +4,9 @@ namespace local_learningjourney\task;
 
 defined('MOODLE_INTERNAL') || die();
 
+global $CFG;
+require_once($CFG->libdir . '/completionlib.php');
+
 use completion_info;
 use context_course;
 use moodle_url;
