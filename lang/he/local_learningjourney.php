@@ -15,6 +15,8 @@ $string['filter_all'] = 'לכל הלומדים בקורס';
 $string['subject'] = 'נושא המייל';
 $string['message'] = 'הודעה אישית';
 $string['enabled'] = 'תזכורת פעילה';
+$string['preview'] = 'תצוגה מקדימה למייל';
+$string['edit'] = 'עריכה';
 
 $string['remindersaved'] = 'התזכורת נשמרה בהצלחה.';
 $string['reminder_help'] = 'כאן ניתן להגדיר תזכורת לפעילות מסוימת בקורס. התזכורת תישלח במייל למשתמשים בהתאם לסינון שבחרת, כולל שם הפעילות וקישורים ישירים לפעילות ולקורס.';
@@ -23,6 +25,11 @@ $string['reminderlist'] = 'תזכורות קיימות בקורס';
 $string['status'] = 'סטטוס';
 $string['status_sent'] = 'נשלחה ({$a})';
 $string['status_notsent'] = 'טרם נשלחה';
+$string['actions'] = 'פעולות';
+
+$string['previewheading'] = 'תצוגה מקדימה של מייל התזכורת';
+$string['previewsubjectlabel'] = 'נושא:';
+$string['previewbodylabel'] = 'תוכן:';
 
 $string['defaultsubject'] = 'תזכורת: {$a->activity} בקורס {$a->course}';
 $string['defaultmessage'] = 'ממתינה לך פעילות במסגרת מסע הלמידה שלך.';

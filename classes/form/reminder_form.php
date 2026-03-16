@@ -21,6 +21,10 @@ class reminder_form extends moodleform {
         $mform->addElement('hidden', 'id', $courseid);
         $mform->setType('id', PARAM_INT);
 
+        // Optional: existing reminder id when editing.
+        $mform->addElement('hidden', 'reminderid', 0);
+        $mform->setType('reminderid', PARAM_INT);
+
         $mform->addElement('header', 'general', get_string('remindersettings', 'local_learningjourney'));
 
         $mform->addElement('select', 'cmid', get_string('activity', 'local_learningjourney'), $modoptions);
@@ -49,7 +53,12 @@ class reminder_form extends moodleform {
         $mform->addElement('advcheckbox', 'enabled', get_string('enabled', 'local_learningjourney'));
         $mform->setDefault('enabled', 1);
 
-        $this->add_action_buttons(true, get_string('savechanges'));
+        // Buttons: save + preview.
+        $buttonarray = [];
+        $buttonarray[] =& $mform->createElement('submit', 'submitbutton', get_string('savechanges'));
+        $buttonarray[] =& $mform->createElement('submit', 'preview', get_string('preview', 'local_learningjourney'));
+        $mform->addGroup($buttonarray, 'buttonar', '', [' '], false);
+        $mform->closeHeaderBefore('buttonar');
     }
 
     public function set_data($defaultvalues) {
@@ -58,6 +67,10 @@ class reminder_form extends moodleform {
                 'text' => $defaultvalues->message,
                 'format' => FORMAT_HTML,
             ];
+        }
+        // If editing an existing reminder, pass its id into reminderid field.
+        if (!empty($defaultvalues->reminderid)) {
+            $defaultvalues->reminderid = (int)$defaultvalues->reminderid;
         }
         parent::set_data($defaultvalues);
     }
