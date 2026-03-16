@@ -117,6 +117,8 @@ class send_reminders extends \core\task\scheduled_task {
             }
         }
 
+        $sentcount = 0;
+
         foreach ($users as $user) {
             if ($cm) {
                 $iscomplete = $this->user_matches_filter($completion, $cm, $user->id, $reminder->completionfilter, true);
@@ -146,6 +148,7 @@ class send_reminders extends \core\task\scheduled_task {
                     $messagetext,
                     $messagehtml
                 );
+                $sentcount++;
             }
 
             // Collect data for manager summary if this is a manager-type reminder and manager exists.
@@ -169,7 +172,7 @@ class send_reminders extends \core\task\scheduled_task {
 
         // Send summary emails to each manager.
         if ($sendtomanagers && !empty($managerrows)) {
-            $this->send_manager_summaries(
+            $sentcount += $this->send_manager_summaries(
                 $managerrows,
                 $reminder,
                 $course,
@@ -179,9 +182,10 @@ class send_reminders extends \core\task\scheduled_task {
             );
         }
 
-        // Mark reminder as sent (single-run reminder).
+        // Mark reminder as sent (single-run reminder) and store sent count.
         $reminder->sent = 1;
         $reminder->senttime = time();
+        $reminder->sentcount = $sentcount;
         $reminder->timemodified = time();
         $DB->update_record('local_learningjourney', $reminder);
     }
