@@ -27,13 +27,10 @@ $string['status_sent'] = 'נשלחה ({$a})';
 $string['status_notsent'] = 'טרם נשלחה';
 $string['actions'] = 'פעולות';
 
-$string['managerheader'] = 'הודעה למנהל';
-$string['sendmanagers'] = 'שליחת סיכום גם למנהלים';
-$string['managersubject'] = 'נושא המייל למנהל';
-$string['managermessage'] = 'הודעה אישית למנהל';
-
-$string['defaultmanagersubject'] = 'סיכום התקדמות לצוות שלך בקורס {$a->course}';
-$string['defaultmanagermessage'] = 'להלן תמונת מצב של הלומדים שאתה מנהל בקורס זה.';
+$string['managerheader'] = 'סוג תזכורת';
+$string['targettype'] = 'סוג תזכורת';
+$string['target_student'] = 'סטודנטים';
+$string['target_manager'] = 'מנהלים';
 $string['managerstatusheading'] = 'סטטוס לומדים בפעילות {$a->activity}';
 $string['managerstatus_complete'] = 'הושלמה';
 $string['managerstatus_notcomplete'] = 'לא הושלמה';

@@ -67,9 +67,7 @@ if ($mform->is_cancelled()) {
         $record->subject = $data->subject ?? null;
         $record->message = $data->message ?? null;
         $record->enabled = empty($data->enabled) ? 0 : 1;
-        $record->sendmanagers = empty($data->sendmanagers) ? 0 : 1;
-        $record->managersubject = $data->managersubject ?? null;
-        $record->managermessage = $data->managermessage ?? null;
+        $record->targettype = $data->targettype ?? 'student';
         $record->timemodified = time();
 
         $DB->update_record('local_learningjourney', $record);
@@ -83,9 +81,7 @@ if ($mform->is_cancelled()) {
         $record->subject = $data->subject ?? null;
         $record->message = $data->message ?? null;
         $record->enabled = empty($data->enabled) ? 0 : 1;
-        $record->sendmanagers = empty($data->sendmanagers) ? 0 : 1;
-        $record->managersubject = $data->managersubject ?? null;
-        $record->managermessage = $data->managermessage ?? null;
+        $record->targettype = $data->targettype ?? 'student';
         $record->sent = 0;
         $record->senttime = null;
         $record->timecreated = time();
@@ -225,6 +221,7 @@ if (!empty($reminders)) {
     $table->head = [
         get_string('activity', 'local_learningjourney'),
         get_string('timetosend', 'local_learningjourney'),
+        get_string('targettype', 'local_learningjourney'),
         get_string('completionfilter', 'local_learningjourney'),
         get_string('status', 'local_learningjourney'),
         get_string('actions', 'local_learningjourney'),
@@ -232,6 +229,10 @@ if (!empty($reminders)) {
 
     foreach ($reminders as $reminder) {
         $activityname = isset($modoptions[$reminder->cmid]) ? $modoptions[$reminder->cmid] : $reminder->cmid;
+
+        $target = (!empty($reminder->targettype) && $reminder->targettype === 'manager')
+            ? get_string('target_manager', 'local_learningjourney')
+            : get_string('target_student', 'local_learningjourney');
 
         $filterstr = get_string('filter_' . $reminder->completionfilter, 'local_learningjourney');
 
@@ -270,6 +271,7 @@ if (!empty($reminders)) {
         $row = new html_table_row([
             $activityname,
             userdate($reminder->timetosend),
+            $target,
             $filterstr,
             $status,
             $actionshtml,

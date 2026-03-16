@@ -52,6 +52,21 @@ function xmldb_local_learningjourney_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026031602, 'local', 'learningjourney');
     }
 
+    // Add targettype field (student/manager) and migrate from sendmanagers.
+    if ($oldversion < 2026031603) {
+        $table = new xmldb_table('local_learningjourney');
+
+        $fieldtarget = new xmldb_field('targettype', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'student', 'managermessage');
+        if (!$dbman->field_exists($table, $fieldtarget)) {
+            $dbman->add_field($table, $fieldtarget);
+        }
+
+        // Migrate existing records: if sendmanagers = 1 then targettype = 'manager'.
+        $DB->execute("UPDATE {local_learningjourney} SET targettype = 'manager' WHERE sendmanagers = 1");
+
+        upgrade_plugin_savepoint(true, 2026031603, 'local', 'learningjourney');
+    }
+
     return true;
 }
 

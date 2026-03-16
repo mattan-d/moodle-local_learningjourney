@@ -1,0 +1,55 @@
+---
+description: Core project standards for Learning Journey (comments language and copyright header)
+alwaysApply: true
+---
+
+# Project Standards
+
+## Code comments language
+
+- All code comments must be written **in English only**.
+- Avoid mixing Hebrew and English in the same comment.
+
+```php
+// ❌ BAD – comment in Hebrew
+// בודק אם המשתמש השלים את הפעילות
+
+// ✅ GOOD – comment in English
+// Check if the user has completed the activity
+```
+
+```js
+// ❌ BAD
+// שליחת תזכורת למשתמשים
+
+// ✅ GOOD
+// Send reminder to the users
+```
+
+## File copyright header
+
+- Every new source file that you create in this project should start with the following header (in a comment appropriate for the language):
+
+```text
+Copyright © CentricApp LTD. dev@centricapp.co.il
+```
+
+- For example, in PHP:
+
+```php
+<?php
+// Copyright © CentricApp LTD. dev@centricapp.co.il
+
+defined('MOODLE_INTERNAL') || die();
+```
+
+- In JavaScript/TypeScript:
+
+```ts
+// Copyright © CentricApp LTD. dev@centricapp.co.il
+
+export function example() {
+  // ...
+}
+```
+

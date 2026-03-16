@@ -27,13 +27,10 @@ $string['status_sent'] = 'Sent ({$a})';
 $string['status_notsent'] = 'Not sent yet';
 $string['actions'] = 'Actions';
 
-$string['managerheader'] = 'Manager notification';
-$string['sendmanagers'] = 'Also send summary email to managers';
-$string['managersubject'] = 'Manager email subject';
-$string['managermessage'] = 'Manager personal message';
-
-$string['defaultmanagersubject'] = 'Progress summary for your team in {$a->course}';
-$string['defaultmanagermessage'] = 'Here is an overview of the users you manage in this course.';
+$string['managerheader'] = 'Reminder type';
+$string['targettype'] = 'Reminder type';
+$string['target_student'] = 'Students';
+$string['target_manager'] = 'Managers';
 $string['managerstatusheading'] = 'Learner progress for activity {$a->activity}';
 $string['managerstatus_complete'] = 'Completed';
 $string['managerstatus_notcomplete'] = 'Not completed';

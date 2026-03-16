@@ -69,38 +69,42 @@ class send_reminders extends \core\task\scheduled_task {
             'course' => format_string($course->fullname),
         ]);
 
-        // Prepare manager mapping based on custom profile field 'manager' (username).
+        $managerrows = [];
         $managersbyuser = [];
-        $managerusercache = [];
 
-        $managerfield = $DB->get_record('user_info_field', ['shortname' => 'manager'], '*', IGNORE_MISSING);
-        if ($managerfield) {
-            $userids = array_map(static function($u) {
-                return $u->id;
-            }, $users);
+        $sendtomanagers = !empty($reminder->targettype) && $reminder->targettype === 'manager';
 
-            list($insql, $inparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
-            $params = $inparams + ['fieldid' => $managerfield->id];
-            $records = $DB->get_records_select('user_info_data', "fieldid = :fieldid AND userid {$insql}", $params);
+        if ($sendtomanagers) {
+            // Prepare manager mapping based on custom profile field 'manager' (username).
+            $managerusercache = [];
 
-            foreach ($records as $rec) {
-                $managerusername = trim((string)$rec->data);
-                if ($managerusername === '') {
-                    continue;
-                }
-                if (!array_key_exists($managerusername, $managerusercache)) {
-                    $managerusercache[$managerusername] = $DB->get_record('user', [
-                        'username' => $managerusername,
-                        'deleted' => 0,
-                    ], '*', IGNORE_MISSING);
-                }
-                if ($managerusercache[$managerusername]) {
-                    $managersbyuser[$rec->userid] = $managerusercache[$managerusername];
+            $managerfield = $DB->get_record('user_info_field', ['shortname' => 'manager'], '*', IGNORE_MISSING);
+            if ($managerfield) {
+                $userids = array_map(static function($u) {
+                    return $u->id;
+                }, $users);
+
+                list($insql, $inparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
+                $params = $inparams + ['fieldid' => $managerfield->id];
+                $records = $DB->get_records_select('user_info_data', "fieldid = :fieldid AND userid {$insql}", $params);
+
+                foreach ($records as $rec) {
+                    $managerusername = trim((string)$rec->data);
+                    if ($managerusername === '') {
+                        continue;
+                    }
+                    if (!array_key_exists($managerusername, $managerusercache)) {
+                        $managerusercache[$managerusername] = $DB->get_record('user', [
+                            'username' => $managerusername,
+                            'deleted' => 0,
+                        ], '*', IGNORE_MISSING);
+                    }
+                    if ($managerusercache[$managerusername]) {
+                        $managersbyuser[$rec->userid] = $managerusercache[$managerusername];
+                    }
                 }
             }
         }
-
-        $managerrows = [];
 
         foreach ($users as $user) {
             $iscomplete = $this->user_matches_filter($completion, $cm, $user->id, $reminder->completionfilter, true);
@@ -108,19 +112,22 @@ class send_reminders extends \core\task\scheduled_task {
                 continue;
             }
 
-            $messagehtml = $this->render_message($reminder->message, $user, $course, $cm, $activityurl, $courseurl);
-            $messagetext = html_to_text($messagehtml);
+            if (empty($reminder->targettype) || $reminder->targettype === 'student') {
+                // Send to student.
+                $messagehtml = $this->render_message($reminder->message, $user, $course, $cm, $activityurl, $courseurl);
+                $messagetext = html_to_text($messagehtml);
 
-            email_to_user(
-                $user,
-                get_admin(),
-                $subject,
-                $messagetext,
-                $messagehtml
-            );
+                email_to_user(
+                    $user,
+                    get_admin(),
+                    $subject,
+                    $messagetext,
+                    $messagehtml
+                );
+            }
 
-            // Collect data for manager summary if enabled and manager exists.
-            if (!empty($reminder->sendmanagers) && isset($managersbyuser[$user->id])) {
+            // Collect data for manager summary if this is a manager-type reminder and manager exists.
+            if ($sendtomanagers && isset($managersbyuser[$user->id])) {
                 $manager = $managersbyuser[$user->id];
 
                 $progresspercent = progress::get_course_progress_percentage($course, $user->id);
@@ -139,7 +146,7 @@ class send_reminders extends \core\task\scheduled_task {
         }
 
         // Send summary emails to each manager.
-        if (!empty($reminder->sendmanagers) && !empty($managerrows)) {
+        if ($sendtomanagers && !empty($managerrows)) {
             $this->send_manager_summaries(
                 $managerrows,
                 $reminder,
@@ -261,11 +268,12 @@ class send_reminders extends \core\task\scheduled_task {
                 continue;
             }
 
-            $subject = $reminder->managersubject ?: get_string('defaultmanagersubject', 'local_learningjourney', [
+            // עבור תזכורות מסוג "מנהל" משתמשים באותו subject/message כמו בטופס.
+            $subject = $reminder->subject ?: get_string('defaultmanagersubject', 'local_learningjourney', [
                 'course' => format_string($course->fullname),
             ]);
 
-            $message = $reminder->managermessage ?: get_string('defaultmanagermessage', 'local_learningjourney');
+            $message = $reminder->message ?: get_string('defaultmanagermessage', 'local_learningjourney');
 
             $message .= html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', [
                 'activity' => format_string($cm->name),

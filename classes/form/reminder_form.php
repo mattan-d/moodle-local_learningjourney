@@ -41,6 +41,14 @@ class reminder_form extends moodleform {
         $mform->addElement('select', 'completionfilter', get_string('completionfilter', 'local_learningjourney'), $options);
         $mform->setDefault('completionfilter', 'all');
 
+        // Reminder type (student / manager) under the same "Reminder settings" header.
+        $typoptions = [
+            'student' => get_string('target_student', 'local_learningjourney'),
+            'manager' => get_string('target_manager', 'local_learningjourney'),
+        ];
+        $mform->addElement('select', 'targettype', get_string('targettype', 'local_learningjourney'), $typoptions);
+        $mform->setDefault('targettype', 'student');
+
         $mform->addElement('text', 'subject', get_string('subject', 'local_learningjourney'), ['size' => 64]);
         $mform->setType('subject', PARAM_TEXT);
 
@@ -48,21 +56,10 @@ class reminder_form extends moodleform {
             'maxfiles' => 0,
             'trusttext' => false,
         ];
+        // כל סוגי התזכורות (סטודנט/מנהל) משתמשים באותו שדה הודעה אישית.
         $mform->addElement('editor', 'message_editor', get_string('message', 'local_learningjourney'), null, $editoroptions);
-
         $mform->addElement('advcheckbox', 'enabled', get_string('enabled', 'local_learningjourney'));
         $mform->setDefault('enabled', 1);
-
-        // Manager notification options.
-        $mform->addElement('header', 'managerheader', get_string('managerheader', 'local_learningjourney'));
-
-        $mform->addElement('advcheckbox', 'sendmanagers', get_string('sendmanagers', 'local_learningjourney'));
-        $mform->setDefault('sendmanagers', 0);
-
-        $mform->addElement('text', 'managersubject', get_string('managersubject', 'local_learningjourney'), ['size' => 64]);
-        $mform->setType('managersubject', PARAM_TEXT);
-
-        $mform->addElement('editor', 'managermessage_editor', get_string('managermessage', 'local_learningjourney'), null, $editoroptions);
 
         // Buttons: save + preview.
         $buttonarray = [];
@@ -76,12 +73,6 @@ class reminder_form extends moodleform {
         if (!empty($defaultvalues->message)) {
             $defaultvalues->message_editor = [
                 'text' => $defaultvalues->message,
-                'format' => FORMAT_HTML,
-            ];
-        }
-        if (!empty($defaultvalues->managermessage)) {
-            $defaultvalues->managermessage_editor = [
-                'text' => $defaultvalues->managermessage,
                 'format' => FORMAT_HTML,
             ];
         }
@@ -101,11 +92,6 @@ class reminder_form extends moodleform {
         if (isset($data->message_editor)) {
             $data->message = $data->message_editor['text'];
             unset($data->message_editor);
-        }
-
-        if (isset($data->managermessage_editor)) {
-            $data->managermessage = $data->managermessage_editor['text'];
-            unset($data->managermessage_editor);
         }
 
         return $data;
