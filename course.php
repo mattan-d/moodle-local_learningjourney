@@ -108,6 +108,47 @@ function local_learningjourney_render_preview_card(string $subject, string $body
     echo html_writer::div($header . $content, 'card border-primary mb-4');
 }
 
+/**
+ * Wrap preview content in the same RTL email template used for sending.
+ *
+ * @param string $subject
+ * @param string $bodyhtml
+ * @return string
+ */
+function local_learningjourney_wrap_email_html_preview(string $subject, string $bodyhtml): string {
+    $title = s($subject);
+    $body = $bodyhtml;
+
+    $css = implode("\n", [
+        'body{margin:0;padding:0;background:#f5f7fb;direction:rtl;text-align:right;font-family:Arial,Helvetica,sans-serif;color:#111827;}',
+        '.container{width:100%;padding:24px 12px;}',
+        '.card{max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;}',
+        '.header{padding:18px 20px;background:#0f62fe;color:#ffffff;font-size:16px;font-weight:bold;}',
+        '.content{padding:20px;}',
+        '.content h4{margin:18px 0 10px 0;font-size:14px;}',
+        '.content p{margin:0 0 12px 0;line-height:1.6;}',
+        'a{color:#0f62fe;text-decoration:underline;}',
+        'table{border-collapse:collapse;width:100%;}',
+        'th,td{border:1px solid #e5e7eb;padding:8px 10px;vertical-align:top;}',
+        'th{background:#f3f4f6;font-weight:bold;}',
+        '.muted{color:#6b7280;font-size:12px;}',
+    ]);
+
+    return '<!doctype html>' .
+        '<html lang="he" dir="rtl">' .
+        '<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' .
+        '<title>' . $title . '</title>' .
+        '<style>' . $css . '</style></head>' .
+        '<body>' .
+        '<div class="container">' .
+        '<div class="card">' .
+        '<div class="header">' . $title . '</div>' .
+        '<div class="content">' . $body . '</div>' .
+        '</div>' .
+        '</div>' .
+        '</body></html>';
+}
+
 $courseid = required_param('id', PARAM_INT);
 
 $course = get_course($courseid);
@@ -256,6 +297,8 @@ if ($previewdata) {
 
         // Do not show the automatic footer in preview.
 
+        $message = local_learningjourney_wrap_email_html_preview($subject, $message);
+
         $popupurl = new moodle_url('/local/learningjourney/course.php', [
             'id' => $course->id,
             'previewpopup' => 1,
@@ -328,6 +371,8 @@ if ($previewdata) {
             get_string('managerprogress', 'local_learningjourney', $progresspercent)
         );
 
+        $message = local_learningjourney_wrap_email_html_preview($subject, $message);
+
         $popupurl = new moodle_url('/local/learningjourney/course.php', [
             'id' => $course->id,
             'previewpopup' => 1,
@@ -360,6 +405,8 @@ if ($previewexistingid && !$previewdata) {
             $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, $cm, $activityurl, $courseurl);
 
             // Do not show the automatic footer in preview.
+
+            $message = local_learningjourney_wrap_email_html_preview($subject, $message);
 
             $popupurl = new moodle_url('/local/learningjourney/course.php', [
                 'id' => $course->id,
@@ -433,6 +480,8 @@ if ($previewexistingid && !$previewdata) {
                 'p',
                 get_string('managerprogress', 'local_learningjourney', $progresspercent)
             );
+
+            $message = local_learningjourney_wrap_email_html_preview($subject, $message);
 
             $popupurl = new moodle_url('/local/learningjourney/course.php', [
                 'id' => $course->id,
