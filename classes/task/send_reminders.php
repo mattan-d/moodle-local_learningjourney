@@ -240,17 +240,7 @@ class send_reminders extends \core\task\scheduled_task {
         $message = $rawmessage ?? get_string('defaultmessage', 'local_learningjourney');
         $message = $this->replace_placeholders($message, $user, $course, $cm, $activityurl, $courseurl);
 
-        // Do not add the automatic footer for "all activities" reminders.
-        if ($cm) {
-            $message .= \html_writer::empty_tag('hr');
-            $message .= \html_writer::tag('p',
-                get_string('messagefooter', 'local_learningjourney', [
-                    'activity' => format_string($cm->name),
-                    'activityurl' => $activityurl->out(false),
-                    'courseurl' => $courseurl->out(false),
-                ])
-            );
-        }
+        // Intentionally do not add any automatic footer.
 
         return $message;
     }
@@ -319,17 +309,7 @@ class send_reminders extends \core\task\scheduled_task {
 
             $message .= \html_writer::table($table);
 
-            // Do not add the automatic footer for "all activities" manager reminders.
-            if ($cm) {
-                $message .= \html_writer::empty_tag('hr');
-                $message .= \html_writer::tag('p',
-                    get_string('messagefooter', 'local_learningjourney', [
-                        'activity' => $activityname,
-                        'activityurl' => $activityurl->out(false),
-                        'courseurl' => $courseurl->out(false),
-                    ])
-                );
-            }
+            // Intentionally do not add any automatic footer.
 
             $messagetext = html_to_text($message);
 

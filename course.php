@@ -254,14 +254,7 @@ if ($previewdata) {
         $message = $previewdata->message ?? get_string('defaultmessage', 'local_learningjourney');
         $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, $cm, $activityurl, $courseurl);
 
-        $message .= html_writer::empty_tag('hr');
-        $message .= html_writer::tag('p',
-            get_string('messagefooter', 'local_learningjourney', [
-                'activity' => format_string($cm->name),
-                'activityurl' => $activityurl->out(false),
-                'courseurl' => $courseurl->out(false),
-            ])
-        );
+        // Do not show the automatic footer in preview.
 
         $popupurl = new moodle_url('/local/learningjourney/course.php', [
             'id' => $course->id,
@@ -366,14 +359,7 @@ if ($previewexistingid && !$previewdata) {
             $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
             $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, $cm, $activityurl, $courseurl);
 
-            $message .= html_writer::empty_tag('hr');
-            $message .= html_writer::tag('p',
-                get_string('messagefooter', 'local_learningjourney', [
-                    'activity' => format_string($cm->name),
-                    'activityurl' => $activityurl->out(false),
-                    'courseurl' => $courseurl->out(false),
-                ])
-            );
+            // Do not show the automatic footer in preview.
 
             $popupurl = new moodle_url('/local/learningjourney/course.php', [
                 'id' => $course->id,
