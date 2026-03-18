@@ -23,6 +23,11 @@ $string['delete'] = 'מחיקה';
 
 $string['remindersaved'] = 'התזכורת נשמרה בהצלחה.';
 $string['reminder_help'] = 'כאן ניתן להגדיר תזכורת לפעילות מסוימת בקורס. התזכורת תישלח במייל למשתמשים בהתאם לסינון שבחרת, כולל שם הפעילות וקישורים ישירים לפעילות ולקורס.';
+$string['placeholdersheading'] = 'משתנים זמינים';
+$string['placeholdershelp'] = 'ניתן להשתמש במשתנים הבאים בנושא המייל ובהודעה האישית: {firstname}, {activityname}, {duedateshortformat}, {modurl}, {modname}. קיימת גם תאימות לפורמט הישן: {{firstname}}, {{activityname}}, {{courseurl}} וכו׳.';
+
+$string['editingreminder'] = 'אתם נמצאים במצב עריכה של תזכורת קיימת.';
+$string['newreminder'] = 'יצירת תזכורת חדשה';
 
 $string['reminderlist'] = 'תזכורות קיימות בקורס';
 $string['status'] = 'סטטוס';

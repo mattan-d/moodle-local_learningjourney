@@ -3,6 +3,111 @@
 require('../../config.php');
 require_once($CFG->libdir . '/completionlib.php');
 
+/**
+ * Replace placeholders in preview subject/body.
+ *
+ * Supports both legacy {{var}} and new {var} formats.
+ *
+ * @param string $text
+ * @param \stdClass $user
+ * @param \stdClass $course
+ * @param \cm_info|null $cm
+ * @param moodle_url $activityurl
+ * @param moodle_url $courseurl
+ * @return string
+ */
+function local_learningjourney_replace_placeholders_preview(
+    string $text,
+    \stdClass $user,
+    \stdClass $course,
+    ?\cm_info $cm,
+    moodle_url $activityurl,
+    moodle_url $courseurl
+): string {
+    global $CFG, $DB;
+
+    $activityname = $cm ? format_string($cm->name) : get_string('allactivities', 'local_learningjourney');
+    $modname = $cm ? (string)$cm->modname : 'course';
+
+    // Best-effort due/close date extraction.
+    $duedate = null;
+    if ($cm) {
+        $fieldmap = [
+            'assign' => ['duedate', 'cutoffdate'],
+            'quiz' => ['timeclose'],
+            'lesson' => ['deadline'],
+            'choice' => ['timeclose'],
+            'workshop' => ['submissionend', 'assessmentend'],
+            'data' => ['timeavailableto', 'timedue'],
+        ];
+        $fields = $fieldmap[$cm->modname] ?? [];
+        if (!empty($fields)) {
+            $instance = $DB->get_record($cm->modname, ['id' => $cm->instance], '*', IGNORE_MISSING);
+            if ($instance) {
+                foreach ($fields as $field) {
+                    if (!empty($instance->{$field}) && (int)$instance->{$field} > 0) {
+                        $duedate = (int)$instance->{$field};
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    $duedateshortformat = $duedate ? userdate($duedate, get_string('strftimedateshort')) : '';
+
+    $replacements = [
+        '{firstname}' => $user->firstname ?? '',
+        '{activityname}' => $activityname,
+        '{duedateshortformat}' => $duedateshortformat,
+        '{modurl}' => $activityurl->out(false),
+        '{modname}' => $modname,
+
+        // Legacy.
+        '{{fullname}}' => fullname($user),
+        '{{firstname}}' => $user->firstname ?? '',
+        '{{lastname}}' => $user->lastname ?? '',
+        '{{activityname}}' => $activityname,
+        '{{coursename}}' => format_string($course->fullname),
+        '{{activityurl}}' => $activityurl->out(false),
+        '{{courseurl}}' => $courseurl->out(false),
+        '{{sitename}}' => format_string($CFG->sitename),
+        '{{modurl}}' => $activityurl->out(false),
+        '{{modname}}' => $modname,
+        '{{duedateshortformat}}' => $duedateshortformat,
+    ];
+
+    return strtr($text, $replacements);
+}
+
+$previewpopup = optional_param('previewpopup', 0, PARAM_BOOL);
+
+/**
+ * Render a visually separated preview block (Bootstrap card).
+ *
+ * @param string $subject
+ * @param string $bodyhtml
+ * @param moodle_url $popupurl
+ * @return void
+ */
+function local_learningjourney_render_preview_card(string $subject, string $bodyhtml, moodle_url $popupurl): void {
+    $header = html_writer::div(
+        html_writer::tag('strong', get_string('previewheading', 'local_learningjourney')),
+        'card-header bg-light'
+    );
+
+    $content = html_writer::div(
+        html_writer::tag('p',
+            html_writer::tag('strong', get_string('previewsubjectlabel', 'local_learningjourney') . ' ') . s($subject)
+        ) .
+        html_writer::tag('p', html_writer::tag('strong', get_string('previewbodylabel', 'local_learningjourney'))) .
+        html_writer::div($bodyhtml, 'border rounded p-3 bg-white'),
+        'card-body'
+    );
+
+    echo html_writer::div($header . $content, 'card border-primary mb-4');
+}
+
 $courseid = required_param('id', PARAM_INT);
 
 $course = get_course($courseid);
@@ -14,7 +119,7 @@ require_capability('local/learningjourney:managereminders', $context);
 
 $PAGE->set_context($context);
 $PAGE->set_url(new moodle_url('/local/learningjourney/course.php', ['id' => $course->id]));
-$PAGE->set_pagelayout('admin');
+$PAGE->set_pagelayout($previewpopup ? 'popup' : 'admin');
 $PAGE->set_heading(format_string($course->fullname));
 $PAGE->set_title(get_string('pluginname', 'local_learningjourney'));
 
@@ -117,7 +222,16 @@ echo $OUTPUT->header();
 
 echo $OUTPUT->heading(get_string('pluginname', 'local_learningjourney'));
 
-echo $OUTPUT->notification(get_string('reminder_help', 'local_learningjourney'), \core\output\notification::NOTIFY_INFO);
+if (!$previewpopup) {
+    echo $OUTPUT->notification(get_string('reminder_help', 'local_learningjourney'), \core\output\notification::NOTIFY_INFO);
+}
+
+// Clear "edit mode" CTA and visible hint.
+if (!$previewpopup && !empty($reminderid)) {
+    echo $OUTPUT->notification(get_string('editingreminder', 'local_learningjourney'), \core\output\notification::NOTIFY_INFO);
+    $newurl = new moodle_url('/local/learningjourney/course.php', ['id' => $course->id]);
+    echo $OUTPUT->single_button($newurl, get_string('newreminder', 'local_learningjourney'), 'get');
+}
 
 // If preview requested, show a rendered example of the email.
 if ($previewdata) {
@@ -135,21 +249,10 @@ if ($previewdata) {
                 'activity' => format_string($cm->name),
                 'course' => format_string($course->fullname),
             ]);
+        $subject = local_learningjourney_replace_placeholders_preview($subject, $USER, $course, $cm, $activityurl, $courseurl);
 
         $message = $previewdata->message ?? get_string('defaultmessage', 'local_learningjourney');
-
-        $replacements = [
-            '{{fullname}}' => fullname($USER),
-            '{{firstname}}' => $USER->firstname,
-            '{{lastname}}' => $USER->lastname,
-            '{{activityname}}' => format_string($cm->name),
-            '{{coursename}}' => format_string($course->fullname),
-            '{{activityurl}}' => $activityurl->out(false),
-            '{{courseurl}}' => $courseurl->out(false),
-            '{{sitename}}' => format_string($SITE->shortname ?? $SITE->fullname ?? ''),
-        ];
-
-        $message = strtr($message, $replacements);
+        $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, $cm, $activityurl, $courseurl);
 
         $message .= html_writer::empty_tag('hr');
         $message .= html_writer::tag('p',
@@ -160,15 +263,11 @@ if ($previewdata) {
             ])
         );
 
-        echo html_writer::tag('h3', get_string('previewheading', 'local_learningjourney'));
-        echo html_writer::start_div('box generalbox');
-        echo html_writer::tag('p',
-            html_writer::tag('strong', get_string('previewsubjectlabel', 'local_learningjourney') . ' ') .
-            s($subject)
-        );
-        echo html_writer::tag('p', html_writer::tag('strong', get_string('previewbodylabel', 'local_learningjourney')));
-        echo html_writer::div($message);
-        echo html_writer::end_div();
+        $popupurl = new moodle_url('/local/learningjourney/course.php', [
+            'id' => $course->id,
+            'previewpopup' => 1,
+        ]);
+        local_learningjourney_render_preview_card($subject, $message, $popupurl);
     } else {
         // Preview for "all activities in course" (cmid = 0).
         $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
@@ -178,30 +277,12 @@ if ($previewdata) {
             : get_string('defaultsubject_course', 'local_learningjourney', [
                 'course' => format_string($course->fullname),
             ]);
+        $subject = local_learningjourney_replace_placeholders_preview($subject, $USER, $course, null, $courseurl, $courseurl);
 
         $message = $previewdata->message ?? get_string('defaultmessage', 'local_learningjourney');
+        $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, null, $courseurl, $courseurl);
 
-        $replacements = [
-            '{{fullname}}' => fullname($USER),
-            '{{firstname}}' => $USER->firstname,
-            '{{lastname}}' => $USER->lastname,
-            '{{activityname}}' => get_string('allactivities', 'local_learningjourney'),
-            '{{coursename}}' => format_string($course->fullname),
-            '{{activityurl}}' => $courseurl->out(false),
-            '{{courseurl}}' => $courseurl->out(false),
-            '{{sitename}}' => format_string($SITE->shortname ?? $SITE->fullname ?? ''),
-        ];
-
-        $message = strtr($message, $replacements);
-
-        $message .= html_writer::empty_tag('hr');
-        $message .= html_writer::tag('p',
-            get_string('messagefooter', 'local_learningjourney', [
-                'activity' => get_string('allactivities', 'local_learningjourney'),
-                'activityurl' => $courseurl->out(false),
-                'courseurl' => $courseurl->out(false),
-            ])
-        );
+        // Do not show the automatic footer for "all activities" previews.
 
         // Append per-activity status table and overall progress for the current user.
         $completion = new completion_info($course);
@@ -254,15 +335,11 @@ if ($previewdata) {
             get_string('managerprogress', 'local_learningjourney', $progresspercent)
         );
 
-        echo html_writer::tag('h3', get_string('previewheading', 'local_learningjourney'));
-        echo html_writer::start_div('box generalbox');
-        echo html_writer::tag('p',
-            html_writer::tag('strong', get_string('previewsubjectlabel', 'local_learningjourney') . ' ') .
-            s($subject)
-        );
-        echo html_writer::tag('p', html_writer::tag('strong', get_string('previewbodylabel', 'local_learningjourney')));
-        echo html_writer::div($message);
-        echo html_writer::end_div();
+        $popupurl = new moodle_url('/local/learningjourney/course.php', [
+            'id' => $course->id,
+            'previewpopup' => 1,
+        ]);
+        local_learningjourney_render_preview_card($subject, $message, $popupurl);
     }
 }
 
@@ -284,21 +361,10 @@ if ($previewexistingid && !$previewdata) {
                     'activity' => format_string($cm->name),
                     'course' => format_string($course->fullname),
                 ]);
+            $subject = local_learningjourney_replace_placeholders_preview($subject, $USER, $course, $cm, $activityurl, $courseurl);
 
             $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
-
-            $replacements = [
-                '{{fullname}}' => fullname($USER),
-                '{{firstname}}' => $USER->firstname,
-                '{{lastname}}' => $USER->lastname,
-                '{{activityname}}' => format_string($cm->name),
-                '{{coursename}}' => format_string($course->fullname),
-                '{{activityurl}}' => $activityurl->out(false),
-                '{{courseurl}}' => $courseurl->out(false),
-                '{{sitename}}' => format_string($SITE->shortname ?? $SITE->fullname ?? ''),
-            ];
-
-            $message = strtr($message, $replacements);
+            $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, $cm, $activityurl, $courseurl);
 
             $message .= html_writer::empty_tag('hr');
             $message .= html_writer::tag('p',
@@ -309,15 +375,12 @@ if ($previewexistingid && !$previewdata) {
                 ])
             );
 
-            echo html_writer::tag('h3', get_string('previewheading', 'local_learningjourney'));
-            echo html_writer::start_div('box generalbox');
-            echo html_writer::tag('p',
-                html_writer::tag('strong', get_string('previewsubjectlabel', 'local_learningjourney') . ' ') .
-                s($subject)
-            );
-            echo html_writer::tag('p', html_writer::tag('strong', get_string('previewbodylabel', 'local_learningjourney')));
-            echo html_writer::div($message);
-            echo html_writer::end_div();
+            $popupurl = new moodle_url('/local/learningjourney/course.php', [
+                'id' => $course->id,
+                'previewid' => $reminder->id,
+                'previewpopup' => 1,
+            ]);
+            local_learningjourney_render_preview_card($subject, $message, $popupurl);
         } else {
             // Existing reminder preview for "all activities".
             $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
@@ -327,30 +390,12 @@ if ($previewexistingid && !$previewdata) {
                 : get_string('defaultsubject_course', 'local_learningjourney', [
                     'course' => format_string($course->fullname),
                 ]);
+            $subject = local_learningjourney_replace_placeholders_preview($subject, $USER, $course, null, $courseurl, $courseurl);
 
             $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
+            $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, null, $courseurl, $courseurl);
 
-            $replacements = [
-                '{{fullname}}' => fullname($USER),
-                '{{firstname}}' => $USER->firstname,
-                '{{lastname}}' => $USER->lastname,
-                '{{activityname}}' => get_string('allactivities', 'local_learningjourney'),
-                '{{coursename}}' => format_string($course->fullname),
-                '{{activityurl}}' => $courseurl->out(false),
-                '{{courseurl}}' => $courseurl->out(false),
-                '{{sitename}}' => format_string($SITE->shortname ?? $SITE->fullname ?? ''),
-            ];
-
-            $message = strtr($message, $replacements);
-
-            $message .= html_writer::empty_tag('hr');
-            $message .= html_writer::tag('p',
-                get_string('messagefooter', 'local_learningjourney', [
-                    'activity' => get_string('allactivities', 'local_learningjourney'),
-                    'activityurl' => $courseurl->out(false),
-                    'courseurl' => $courseurl->out(false),
-                ])
-            );
+            // Do not show the automatic footer for "all activities" previews.
 
             // Append per-activity status table and overall progress for the current user.
             $completion = new completion_info($course);
@@ -403,17 +448,20 @@ if ($previewexistingid && !$previewdata) {
                 get_string('managerprogress', 'local_learningjourney', $progresspercent)
             );
 
-            echo html_writer::tag('h3', get_string('previewheading', 'local_learningjourney'));
-            echo html_writer::start_div('box generalbox');
-            echo html_writer::tag('p',
-                html_writer::tag('strong', get_string('previewsubjectlabel', 'local_learningjourney') . ' ') .
-                s($subject)
-            );
-            echo html_writer::tag('p', html_writer::tag('strong', get_string('previewbodylabel', 'local_learningjourney')));
-            echo html_writer::div($message);
-            echo html_writer::end_div();
+            $popupurl = new moodle_url('/local/learningjourney/course.php', [
+                'id' => $course->id,
+                'previewid' => $reminder->id,
+                'previewpopup' => 1,
+            ]);
+            local_learningjourney_render_preview_card($subject, $message, $popupurl);
         }
     }
+}
+
+// If this is a popup preview, do not render the rest of the page.
+if ($previewpopup && ($previewdata || $previewexistingid)) {
+    echo $OUTPUT->footer();
+    exit;
 }
 
 // Show existing reminders for this course.
@@ -453,6 +501,7 @@ if (!empty($reminders)) {
         $previewurl = new moodle_url('/local/learningjourney/course.php', [
             'id' => $course->id,
             'previewid' => $reminder->id,
+            'previewpopup' => 1,
         ]);
         $editurl = new moodle_url('/local/learningjourney/course.php', [
             'id' => $course->id,
@@ -469,7 +518,11 @@ if (!empty($reminders)) {
             $previewurl,
             new pix_icon('t/preview', get_string('preview', 'local_learningjourney')),
             null,
-            ['class' => 'action-icon']
+            [
+                'class' => 'action-icon',
+                'target' => '_blank',
+                'rel' => 'noopener',
+            ]
         );
 
         $editicon = $OUTPUT->action_icon(

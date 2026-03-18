@@ -71,16 +71,9 @@ class send_reminders extends \core\task\scheduled_task {
         $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
         if ($cm) {
             $activityurl = new moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]);
-            $subject = $reminder->subject ?: get_string('defaultsubject', 'local_learningjourney', [
-                'activity' => format_string($cm->name),
-                'course' => format_string($course->fullname),
-            ]);
         } else {
             // Reminder for all activities in course.
             $activityurl = $courseurl;
-            $subject = $reminder->subject ?: get_string('defaultsubject_course', 'local_learningjourney', [
-                'course' => format_string($course->fullname),
-            ]);
         }
 
         $managerrows = [];
@@ -135,6 +128,9 @@ class send_reminders extends \core\task\scheduled_task {
 
             if (empty($reminder->targettype) || $reminder->targettype === 'student') {
                 // Send to student.
+                $rawsubject = $reminder->subject ?: $this->get_default_subject($course, $cm);
+                $subject = $this->replace_placeholders($rawsubject, $user, $course, $cm, $activityurl, $courseurl);
+
                 $messagehtml = $this->render_message($reminder->message, $user, $course, $cm, $activityurl, $courseurl);
 
                 // If this reminder is for "all activities in course", append per-activity status table for this learner.
@@ -241,33 +237,20 @@ class send_reminders extends \core\task\scheduled_task {
         moodle_url $activityurl,
         moodle_url $courseurl
     ): string {
-        global $CFG;
-
         $message = $rawmessage ?? get_string('defaultmessage', 'local_learningjourney');
+        $message = $this->replace_placeholders($message, $user, $course, $cm, $activityurl, $courseurl);
 
-        $activityname = $cm ? format_string($cm->name) : get_string('allactivities', 'local_learningjourney');
-
-        $replacements = [
-            '{{fullname}}' => fullname($user),
-            '{{firstname}}' => $user->firstname,
-            '{{lastname}}' => $user->lastname,
-            '{{activityname}}' => $activityname,
-            '{{coursename}}' => format_string($course->fullname),
-            '{{activityurl}}' => $activityurl->out(false),
-            '{{courseurl}}' => $courseurl->out(false),
-            '{{sitename}}' => format_string($CFG->sitename),
-        ];
-
-        $message = strtr($message, $replacements);
-
-        $message .= \html_writer::empty_tag('hr');
-        $message .= \html_writer::tag('p',
-            get_string('messagefooter', 'local_learningjourney', [
-                'activity' => $activityname,
-                'activityurl' => $activityurl->out(false),
-                'courseurl' => $courseurl->out(false),
-            ])
-        );
+        // Do not add the automatic footer for "all activities" reminders.
+        if ($cm) {
+            $message .= \html_writer::empty_tag('hr');
+            $message .= \html_writer::tag('p',
+                get_string('messagefooter', 'local_learningjourney', [
+                    'activity' => format_string($cm->name),
+                    'activityurl' => $activityurl->out(false),
+                    'courseurl' => $courseurl->out(false),
+                ])
+            );
+        }
 
         return $message;
     }
@@ -301,16 +284,15 @@ class send_reminders extends \core\task\scheduled_task {
                 continue;
             }
 
-            // עבור תזכורות מסוג "מנהל" משתמשים באותו subject/message כמו בטופס.
-            $subject = $reminder->subject ?: get_string('defaultmanagersubject', 'local_learningjourney', [
-                'course' => format_string($course->fullname),
-            ]);
+            $rawsubject = $reminder->subject ?: $this->get_default_subject($course, $cm);
+            $subject = $this->replace_placeholders($rawsubject, $manager, $course, $cm, $activityurl, $courseurl);
 
             $message = $reminder->message ?: get_string('defaultmanagermessage', 'local_learningjourney');
+            $message = $this->replace_placeholders($message, $manager, $course, $cm, $activityurl, $courseurl);
 
             $activityname = $cm ? format_string($cm->name) : get_string('allactivities', 'local_learningjourney');
 
-            $message .= html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', [
+            $message .= \html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', [
                 'activity' => $activityname,
             ]));
 
@@ -337,14 +319,17 @@ class send_reminders extends \core\task\scheduled_task {
 
             $message .= \html_writer::table($table);
 
-            $message .= \html_writer::empty_tag('hr');
-            $message .= \html_writer::tag('p',
-                get_string('messagefooter', 'local_learningjourney', [
-                    'activity' => $activityname,
-                    'activityurl' => $activityurl->out(false),
-                    'courseurl' => $courseurl->out(false),
-                ])
-            );
+            // Do not add the automatic footer for "all activities" manager reminders.
+            if ($cm) {
+                $message .= \html_writer::empty_tag('hr');
+                $message .= \html_writer::tag('p',
+                    get_string('messagefooter', 'local_learningjourney', [
+                        'activity' => $activityname,
+                        'activityurl' => $activityurl->out(false),
+                        'courseurl' => $courseurl->out(false),
+                    ])
+                );
+            }
 
             $messagetext = html_to_text($message);
 
@@ -429,6 +414,130 @@ class send_reminders extends \core\task\scheduled_task {
         );
 
         return $html;
+    }
+
+    /**
+     * Replace placeholders in subject/body.
+     *
+     * Supports both legacy {{var}} and new {var} formats.
+     *
+     * Supported variables:
+     * - {firstname}
+     * - {activityname}
+     * - {duedateshortformat}
+     * - {modurl}
+     * - {modname}
+     *
+     * @param string $text
+     * @param \stdClass $user
+     * @param \stdClass $course
+     * @param \cm_info|\stdClass|null $cm
+     * @param moodle_url $activityurl
+     * @param moodle_url $courseurl
+     * @return string
+     */
+    protected function replace_placeholders(
+        string $text,
+        \stdClass $user,
+        \stdClass $course,
+        $cm,
+        moodle_url $activityurl,
+        moodle_url $courseurl
+    ): string {
+        global $CFG;
+
+        $activityname = $cm ? format_string($cm->name) : get_string('allactivities', 'local_learningjourney');
+        $modname = $cm ? (string)$cm->modname : 'course';
+        $duedate = $this->get_module_due_date_timestamp($course, $cm);
+        $duedateshortformat = $duedate ? userdate($duedate, get_string('strftimedateshort')) : '';
+
+        $replacements = [
+            // New requested format.
+            '{firstname}' => $user->firstname ?? '',
+            '{activityname}' => $activityname,
+            '{duedateshortformat}' => $duedateshortformat,
+            '{modurl}' => $activityurl->out(false),
+            '{modname}' => $modname,
+
+            // Keep existing legacy format working.
+            '{{fullname}}' => fullname($user),
+            '{{firstname}}' => $user->firstname ?? '',
+            '{{lastname}}' => $user->lastname ?? '',
+            '{{activityname}}' => $activityname,
+            '{{coursename}}' => format_string($course->fullname),
+            '{{activityurl}}' => $activityurl->out(false),
+            '{{courseurl}}' => $courseurl->out(false),
+            '{{sitename}}' => format_string($CFG->sitename),
+        ];
+
+        // Also allow legacy double-brace versions for new variables.
+        $replacements['{{modurl}}'] = $replacements['{modurl}'];
+        $replacements['{{modname}}'] = $replacements['{modname}'];
+        $replacements['{{duedateshortformat}}'] = $replacements['{duedateshortformat}'];
+
+        return strtr($text, $replacements);
+    }
+
+    /**
+     * Best-effort extraction of an activity due/close date as a timestamp.
+     *
+     * @param \stdClass $course
+     * @param \cm_info|\stdClass|null $cm
+     * @return int|null
+     */
+    protected function get_module_due_date_timestamp(\stdClass $course, $cm): ?int {
+        global $DB;
+
+        if (!$cm || empty($cm->modname)) {
+            return null;
+        }
+
+        // Common due/close fields by module type.
+        $fieldmap = [
+            'assign' => ['duedate', 'cutoffdate'],
+            'quiz' => ['timeclose'],
+            'lesson' => ['deadline'],
+            'choice' => ['timeclose'],
+            'workshop' => ['submissionend', 'assessmentend'],
+            'data' => ['timeavailableto', 'timedue'],
+        ];
+
+        $fields = $fieldmap[$cm->modname] ?? [];
+        if (empty($fields)) {
+            return null;
+        }
+
+        if (!$instance = $DB->get_record($cm->modname, ['id' => $cm->instance], '*', IGNORE_MISSING)) {
+            return null;
+        }
+
+        foreach ($fields as $field) {
+            if (!empty($instance->{$field}) && (int)$instance->{$field} > 0) {
+                return (int)$instance->{$field};
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Default subject when no custom subject was provided.
+     *
+     * @param \stdClass $course
+     * @param \cm_info|\stdClass|null $cm
+     * @return string
+     */
+    protected function get_default_subject(\stdClass $course, $cm): string {
+        if ($cm) {
+            return get_string('defaultsubject', 'local_learningjourney', [
+                'activity' => format_string($cm->name),
+                'course' => format_string($course->fullname),
+            ]);
+        }
+
+        return get_string('defaultsubject_course', 'local_learningjourney', [
+            'course' => format_string($course->fullname),
+        ]);
     }
 }
 

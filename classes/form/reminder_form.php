@@ -57,6 +57,10 @@ class reminder_form extends moodleform {
         $mform->addElement('text', 'subject', get_string('subject', 'local_learningjourney'), ['size' => 64]);
         $mform->setType('subject', PARAM_TEXT);
 
+        // Help: show available placeholders.
+        $mform->addElement('static', 'placeholders', get_string('placeholdersheading', 'local_learningjourney'),
+            get_string('placeholdershelp', 'local_learningjourney'));
+
         $editoroptions = [
             'maxfiles' => 0,
             'trusttext' => false,
@@ -69,7 +73,16 @@ class reminder_form extends moodleform {
         // Buttons: save + preview.
         $buttonarray = [];
         $buttonarray[] =& $mform->createElement('submit', 'submitbutton', get_string('savechanges'));
-        $buttonarray[] =& $mform->createElement('submit', 'preview', get_string('preview', 'local_learningjourney'));
+        $previewurl = new \moodle_url('/local/learningjourney/course.php', [
+            'id' => $courseid,
+            'previewpopup' => 1,
+        ]);
+        $buttonarray[] =& $mform->createElement('submit', 'preview', get_string('preview', 'local_learningjourney'), [
+            // Always open preview in a new tab/window.
+            'formtarget' => '_blank',
+            'formaction' => $previewurl->out(false),
+            'rel' => 'noopener',
+        ]);
         $mform->addGroup($buttonarray, 'buttonar', '', [' '], false);
         $mform->closeHeaderBefore('buttonar');
     }
