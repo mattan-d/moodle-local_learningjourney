@@ -136,6 +136,124 @@ function local_learningjourney_wrap_email_html_preview(string $subject, string $
     );
 }
 
+/**
+ * Preview helper: match user against selected filter.
+ *
+ * @param completion_info $completion
+ * @param \cm_info|null $cm
+ * @param int $userid
+ * @param string $filter
+ * @return bool|null
+ */
+function local_learningjourney_user_matches_filter_preview(
+    completion_info $completion,
+    ?\cm_info $cm,
+    int $userid,
+    string $filter
+): ?bool {
+    if (!$cm) {
+        // Keep parity with scheduled task for "all activities".
+        return null;
+    }
+
+    if ($filter === 'all') {
+        return true;
+    }
+
+    $data = $completion->get_data($cm, false, $userid);
+    $iscomplete = !empty($data) && !empty($data->completionstate);
+
+    if ($filter === 'completed' || $filter === 'oncomplete') {
+        return $iscomplete;
+    }
+    if ($filter === 'notcompleted') {
+        return !$iscomplete;
+    }
+
+    return null;
+}
+
+/**
+ * Build manager rows for preview with same logic as scheduled task.
+ *
+ * @param \stdClass $course
+ * @param \cm_info|null $cm
+ * @param string $completionfilter
+ * @return array managerid => array of row objects
+ */
+function local_learningjourney_get_manager_rows_preview(\stdClass $course, ?\cm_info $cm, string $completionfilter): array {
+    global $DB;
+
+    $context = context_course::instance($course->id);
+    $users = get_enrolled_users($context, '', 0, 'u.*');
+    if (empty($users)) {
+        return [];
+    }
+
+    $completion = new completion_info($course);
+
+    // Resolve manager user by custom profile field "manager" (username).
+    $managersbyuser = [];
+    $managerfield = $DB->get_record('user_info_field', ['shortname' => 'manager'], '*', IGNORE_MISSING);
+    if ($managerfield) {
+        $managercache = [];
+        $userids = array_map(static function($u) {
+            return $u->id;
+        }, $users);
+        list($insql, $inparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
+        $params = $inparams + ['fieldid' => $managerfield->id];
+        $records = $DB->get_records_select('user_info_data', "fieldid = :fieldid AND userid {$insql}", $params);
+
+        foreach ($records as $rec) {
+            $managerusername = trim((string)$rec->data);
+            if ($managerusername === '') {
+                continue;
+            }
+            if (!array_key_exists($managerusername, $managercache)) {
+                $managercache[$managerusername] = $DB->get_record('user', [
+                    'username' => $managerusername,
+                    'deleted' => 0,
+                ], '*', IGNORE_MISSING);
+            }
+            if ($managercache[$managerusername]) {
+                $managersbyuser[$rec->userid] = $managercache[$managerusername];
+            }
+        }
+    }
+
+    $rowsbymanager = [];
+    foreach ($users as $user) {
+        $iscomplete = local_learningjourney_user_matches_filter_preview($completion, $cm, $user->id, $completionfilter);
+        if ($cm && $iscomplete === null) {
+            continue;
+        }
+        if ($cm && ($completionfilter === 'completed' || $completionfilter === 'oncomplete' || $completionfilter === 'notcompleted')) {
+            if ($completionfilter === 'completed' || $completionfilter === 'oncomplete') {
+                if (!$iscomplete) {
+                    continue;
+                }
+            } else if ($completionfilter === 'notcompleted' && $iscomplete) {
+                continue;
+            }
+        }
+
+        if (!isset($managersbyuser[$user->id])) {
+            continue;
+        }
+        $manager = $managersbyuser[$user->id];
+        $progresspercent = \core_completion\progress::get_course_progress_percentage($course, $user->id);
+        $progresspercent = ($progresspercent === null) ? 0 : round($progresspercent);
+
+        $rowsbymanager[$manager->id][] = (object)[
+            'learner' => $user,
+            'complete' => (bool)$iscomplete,
+            'progress' => $progresspercent,
+        ];
+    }
+
+    return $rowsbymanager;
+}
+
 $courseid = required_param('id', PARAM_INT);
 
 $course = get_course($courseid);
@@ -282,7 +400,30 @@ if ($previewdata) {
         $message = $previewdata->message ?? get_string('defaultmessage', 'local_learningjourney');
         $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, $cm, $activityurl, $courseurl);
 
-        // Do not show the automatic footer in preview.
+        // Manager preview: show the same summary table structure sent by cron.
+        if (($previewdata->targettype ?? 'student') === 'manager') {
+            $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, $cm, $previewdata->completionfilter ?? 'all');
+            $managerrows = $rowsbymanager[$USER->id] ?? [];
+            if (empty($managerrows) && !empty($rowsbymanager)) {
+                $managerrows = reset($rowsbymanager);
+            }
+
+            $table = new html_table();
+            $table->head = [get_string('fullname'), get_string('status'), get_string('completion', 'completion')];
+            foreach ($managerrows as $row) {
+                $statusstr = $row->complete
+                    ? get_string('managerstatus_complete', 'local_learningjourney')
+                    : get_string('managerstatus_notcomplete', 'local_learningjourney');
+                $progressstr = get_string('managerprogress', 'local_learningjourney', $row->progress);
+                $table->data[] = new html_table_row([fullname($row->learner), $statusstr, $progressstr]);
+            }
+
+            $activityname = format_string($cm->name);
+            $message .= html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', ['activity' => $activityname]));
+            if (!empty($table->data)) {
+                $message .= html_writer::table($table);
+            }
+        }
 
         $message = local_learningjourney_wrap_email_html_preview($subject, $message);
 
@@ -305,119 +446,29 @@ if ($previewdata) {
         $message = $previewdata->message ?? get_string('defaultmessage', 'local_learningjourney');
         $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, null, $courseurl, $courseurl);
 
-        // Do not show the automatic footer for "all activities" previews.
-
-        // Append per-activity status table and overall progress for the current user.
-        $completion = new completion_info($course);
-        $modinfo = get_fast_modinfo($course);
-        $cmsall = $modinfo->get_cms();
-
-        $table = new html_table();
-        $table->head = [
-            get_string('activity', 'local_learningjourney'),
-            get_string('status'),
-        ];
-
-        foreach ($cmsall as $cmitem) {
-            if (!$cmitem->uservisible) {
-                continue;
+        if (($previewdata->targettype ?? 'student') === 'manager') {
+            $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, null, $previewdata->completionfilter ?? 'all');
+            $managerrows = $rowsbymanager[$USER->id] ?? [];
+            if (empty($managerrows) && !empty($rowsbymanager)) {
+                $managerrows = reset($rowsbymanager);
             }
-            if (!$completion->is_enabled($cmitem)) {
-                continue;
+            $table = new html_table();
+            $table->head = [get_string('fullname'), get_string('status'), get_string('completion', 'completion')];
+            foreach ($managerrows as $row) {
+                $statusstr = $row->complete
+                    ? get_string('managerstatus_complete', 'local_learningjourney')
+                    : get_string('managerstatus_notcomplete', 'local_learningjourney');
+                $progressstr = get_string('managerprogress', 'local_learningjourney', $row->progress);
+                $table->data[] = new html_table_row([fullname($row->learner), $statusstr, $progressstr]);
             }
-
-            $data = $completion->get_data($cmitem, false, $USER->id);
-            $iscomplete = !empty($data) && !empty($data->completionstate);
-
-            $statusstr = $iscomplete
-                ? get_string('managerstatus_complete', 'local_learningjourney')
-                : get_string('managerstatus_notcomplete', 'local_learningjourney');
-
-            $table->data[] = new html_table_row([
-                format_string($cmitem->name),
-                $statusstr,
-            ]);
-        }
-
-        if (!empty($table->data)) {
             $message .= html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', [
                 'activity' => get_string('allactivities', 'local_learningjourney'),
             ]));
-            $message .= html_writer::table($table);
-        }
-
-        $progresspercent = \core_completion\progress::get_course_progress_percentage($course, $USER->id);
-        if ($progresspercent === null) {
-            $progresspercent = 0;
+            if (!empty($table->data)) {
+                $message .= html_writer::table($table);
+            }
         } else {
-            $progresspercent = round($progresspercent);
-        }
-
-        $message .= html_writer::tag(
-            'p',
-            get_string('managerprogress', 'local_learningjourney', $progresspercent)
-        );
-
-        $message = local_learningjourney_wrap_email_html_preview($subject, $message);
-
-        $popupurl = new moodle_url('/local/learningjourney/course.php', [
-            'id' => $course->id,
-            'previewpopup' => 1,
-        ]);
-        local_learningjourney_render_preview_card($subject, $message, $popupurl);
-    }
-}
-
-// Preview from existing reminder row (without using the form).
-if ($previewexistingid && !$previewdata) {
-    global $USER, $SITE;
-
-    $reminder = $DB->get_record('local_learningjourney', ['id' => $previewexistingid, 'courseid' => $course->id], '*', IGNORE_MISSING);
-    if ($reminder) {
-        if (!empty($reminder->cmid) && isset($cms[$reminder->cmid])) {
-            $cm = $cms[$reminder->cmid];
-
-            $activityurl = new moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]);
-            $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
-
-            $subject = !empty($reminder->subject)
-                ? $reminder->subject
-                : get_string('defaultsubject', 'local_learningjourney', [
-                    'activity' => format_string($cm->name),
-                    'course' => format_string($course->fullname),
-                ]);
-            $subject = local_learningjourney_replace_placeholders_preview($subject, $USER, $course, $cm, $activityurl, $courseurl);
-
-            $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
-            $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, $cm, $activityurl, $courseurl);
-
-            // Do not show the automatic footer in preview.
-
-            $message = local_learningjourney_wrap_email_html_preview($subject, $message);
-
-            $popupurl = new moodle_url('/local/learningjourney/course.php', [
-                'id' => $course->id,
-                'previewid' => $reminder->id,
-                'previewpopup' => 1,
-            ]);
-            local_learningjourney_render_preview_card($subject, $message, $popupurl);
-        } else {
-            // Existing reminder preview for "all activities".
-            $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
-
-            $subject = !empty($reminder->subject)
-                ? $reminder->subject
-                : get_string('defaultsubject_course', 'local_learningjourney', [
-                    'course' => format_string($course->fullname),
-                ]);
-            $subject = local_learningjourney_replace_placeholders_preview($subject, $USER, $course, null, $courseurl, $courseurl);
-
-            $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
-            $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, null, $courseurl, $courseurl);
-
-            // Do not show the automatic footer for "all activities" previews.
-
-            // Append per-activity status table and overall progress for the current user.
+            // Student preview for all activities: activity statuses + course progress.
             $completion = new completion_info($course);
             $modinfo = get_fast_modinfo($course);
             $cmsall = $modinfo->get_cms();
@@ -467,6 +518,160 @@ if ($previewexistingid && !$previewdata) {
                 'p',
                 get_string('managerprogress', 'local_learningjourney', $progresspercent)
             );
+        }
+
+        $message = local_learningjourney_wrap_email_html_preview($subject, $message);
+
+        $popupurl = new moodle_url('/local/learningjourney/course.php', [
+            'id' => $course->id,
+            'previewpopup' => 1,
+        ]);
+        local_learningjourney_render_preview_card($subject, $message, $popupurl);
+    }
+}
+
+// Preview from existing reminder row (without using the form).
+if ($previewexistingid && !$previewdata) {
+    global $USER, $SITE;
+
+    $reminder = $DB->get_record('local_learningjourney', ['id' => $previewexistingid, 'courseid' => $course->id], '*', IGNORE_MISSING);
+    if ($reminder) {
+        if (!empty($reminder->cmid) && isset($cms[$reminder->cmid])) {
+            $cm = $cms[$reminder->cmid];
+
+            $activityurl = new moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]);
+            $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
+
+            $subject = !empty($reminder->subject)
+                ? $reminder->subject
+                : get_string('defaultsubject', 'local_learningjourney', [
+                    'activity' => format_string($cm->name),
+                    'course' => format_string($course->fullname),
+                ]);
+            $subject = local_learningjourney_replace_placeholders_preview($subject, $USER, $course, $cm, $activityurl, $courseurl);
+
+            $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
+            $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, $cm, $activityurl, $courseurl);
+
+            if (($reminder->targettype ?? 'student') === 'manager') {
+                $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, $cm, $reminder->completionfilter ?? 'all');
+                $managerrows = $rowsbymanager[$USER->id] ?? [];
+                if (empty($managerrows) && !empty($rowsbymanager)) {
+                    $managerrows = reset($rowsbymanager);
+                }
+
+                $table = new html_table();
+                $table->head = [get_string('fullname'), get_string('status'), get_string('completion', 'completion')];
+                foreach ($managerrows as $row) {
+                    $statusstr = $row->complete
+                        ? get_string('managerstatus_complete', 'local_learningjourney')
+                        : get_string('managerstatus_notcomplete', 'local_learningjourney');
+                    $progressstr = get_string('managerprogress', 'local_learningjourney', $row->progress);
+                    $table->data[] = new html_table_row([fullname($row->learner), $statusstr, $progressstr]);
+                }
+                $message .= html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', [
+                    'activity' => format_string($cm->name),
+                ]));
+                if (!empty($table->data)) {
+                    $message .= html_writer::table($table);
+                }
+            }
+
+            $message = local_learningjourney_wrap_email_html_preview($subject, $message);
+
+            $popupurl = new moodle_url('/local/learningjourney/course.php', [
+                'id' => $course->id,
+                'previewid' => $reminder->id,
+                'previewpopup' => 1,
+            ]);
+            local_learningjourney_render_preview_card($subject, $message, $popupurl);
+        } else {
+            // Existing reminder preview for "all activities".
+            $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
+
+            $subject = !empty($reminder->subject)
+                ? $reminder->subject
+                : get_string('defaultsubject_course', 'local_learningjourney', [
+                    'course' => format_string($course->fullname),
+                ]);
+            $subject = local_learningjourney_replace_placeholders_preview($subject, $USER, $course, null, $courseurl, $courseurl);
+
+            $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
+            $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, null, $courseurl, $courseurl);
+
+            if (($reminder->targettype ?? 'student') === 'manager') {
+                $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, null, $reminder->completionfilter ?? 'all');
+                $managerrows = $rowsbymanager[$USER->id] ?? [];
+                if (empty($managerrows) && !empty($rowsbymanager)) {
+                    $managerrows = reset($rowsbymanager);
+                }
+                $table = new html_table();
+                $table->head = [get_string('fullname'), get_string('status'), get_string('completion', 'completion')];
+                foreach ($managerrows as $row) {
+                    $statusstr = $row->complete
+                        ? get_string('managerstatus_complete', 'local_learningjourney')
+                        : get_string('managerstatus_notcomplete', 'local_learningjourney');
+                    $progressstr = get_string('managerprogress', 'local_learningjourney', $row->progress);
+                    $table->data[] = new html_table_row([fullname($row->learner), $statusstr, $progressstr]);
+                }
+                $message .= html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', [
+                    'activity' => get_string('allactivities', 'local_learningjourney'),
+                ]));
+                if (!empty($table->data)) {
+                    $message .= html_writer::table($table);
+                }
+            } else {
+                // Student preview for all activities.
+                $completion = new completion_info($course);
+                $modinfo = get_fast_modinfo($course);
+                $cmsall = $modinfo->get_cms();
+
+                $table = new html_table();
+                $table->head = [
+                    get_string('activity', 'local_learningjourney'),
+                    get_string('status'),
+                ];
+
+                foreach ($cmsall as $cmitem) {
+                    if (!$cmitem->uservisible) {
+                        continue;
+                    }
+                    if (!$completion->is_enabled($cmitem)) {
+                        continue;
+                    }
+
+                    $data = $completion->get_data($cmitem, false, $USER->id);
+                    $iscomplete = !empty($data) && !empty($data->completionstate);
+
+                    $statusstr = $iscomplete
+                        ? get_string('managerstatus_complete', 'local_learningjourney')
+                        : get_string('managerstatus_notcomplete', 'local_learningjourney');
+
+                    $table->data[] = new html_table_row([
+                        format_string($cmitem->name),
+                        $statusstr,
+                    ]);
+                }
+
+                if (!empty($table->data)) {
+                    $message .= html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', [
+                        'activity' => get_string('allactivities', 'local_learningjourney'),
+                    ]));
+                    $message .= html_writer::table($table);
+                }
+
+                $progresspercent = \core_completion\progress::get_course_progress_percentage($course, $USER->id);
+                if ($progresspercent === null) {
+                    $progresspercent = 0;
+                } else {
+                    $progresspercent = round($progresspercent);
+                }
+
+                $message .= html_writer::tag(
+                    'p',
+                    get_string('managerprogress', 'local_learningjourney', $progresspercent)
+                );
+            }
 
             $message = local_learningjourney_wrap_email_html_preview($subject, $message);
 
