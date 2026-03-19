@@ -121,10 +121,10 @@ function local_learningjourney_wrap_email_html_preview(string $subject, string $
 
     // IMPORTANT: Preview HTML is embedded inside a Moodle page, so do not output <html>/<head>/<body>.
     // Use inline styles to approximate the sent email look.
-    $containerstyle = 'direction:rtl;text-align:right;font-family:Arial,Helvetica,sans-serif;color:#111827;background:#f5f7fb;padding:16px;border-radius:12px;';
+    $containerstyle = 'direction:rtl;text-align:right;font-family:Arial !important;color:#111827;background:#f5f7fb;padding:16px;border-radius:12px;';
     $cardstyle = 'max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;';
-    $headerstyle = 'padding:18px 20px;background:#0f62fe;color:#ffffff;font-size:16px;font-weight:bold;';
-    $contentstyle = 'padding:20px;';
+    $headerstyle = 'padding:18px 20px;background:#0f62fe;color:#ffffff;font-size:16px;font-weight:bold;font-family:Arial !important;';
+    $contentstyle = 'padding:20px;font-family:Arial !important;';
 
     return \html_writer::tag('div',
         \html_writer::tag('div',
