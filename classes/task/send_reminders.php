@@ -288,24 +288,40 @@ class send_reminders extends \core\task\scheduled_task {
             ]));
 
             $table = new \html_table();
-            $table->head = [
-                get_string('fullname'),
-                get_string('status'),
-                get_string('completion', 'completion'),
-            ];
+            if ($cm) {
+                $table->head = [
+                    get_string('fullname'),
+                    get_string('status'),
+                    get_string('completion', 'completion'),
+                ];
+            } else {
+                $table->head = [
+                    get_string('fullname'),
+                    get_string('manageractivitystatuses', 'local_learningjourney'),
+                    get_string('completion', 'completion'),
+                ];
+            }
 
             foreach ($rows as $row) {
-                $statusstr = $row->complete
-                    ? get_string('managerstatus_complete', 'local_learningjourney')
-                    : get_string('managerstatus_notcomplete', 'local_learningjourney');
-
                 $progressstr = get_string('managerprogress', 'local_learningjourney', $row->progress);
 
-                $table->data[] = new \html_table_row([
-                    fullname($row->learner),
-                    $statusstr,
-                    $progressstr,
-                ]);
+                if ($cm) {
+                    $statusstr = $row->complete
+                        ? get_string('managerstatus_complete', 'local_learningjourney')
+                        : get_string('managerstatus_notcomplete', 'local_learningjourney');
+
+                    $table->data[] = new \html_table_row([
+                        fullname($row->learner),
+                        $statusstr,
+                        $progressstr,
+                    ]);
+                } else {
+                    $table->data[] = new \html_table_row([
+                        fullname($row->learner),
+                        $this->build_manager_activity_status_list($course, $row->learner->id),
+                        $progressstr,
+                    ]);
+                }
             }
 
             $message .= \html_writer::table($table);
@@ -326,6 +342,43 @@ class send_reminders extends \core\task\scheduled_task {
         }
 
         return $sent;
+    }
+
+    /**
+     * Build HTML list of all activity statuses for one learner.
+     *
+     * @param \stdClass $course
+     * @param int $userid
+     * @return string
+     */
+    protected function build_manager_activity_status_list(\stdClass $course, int $userid): string {
+        $completion = new completion_info($course);
+        $modinfo = get_fast_modinfo($course);
+        $cms = $modinfo->get_cms();
+
+        $items = [];
+        foreach ($cms as $cm) {
+            if (!$cm->uservisible) {
+                continue;
+            }
+            if (!$completion->is_enabled($cm)) {
+                continue;
+            }
+
+            $data = $completion->get_data($cm, false, $userid);
+            $iscomplete = !empty($data) && !empty($data->completionstate);
+            $status = $iscomplete
+                ? get_string('managerstatus_complete', 'local_learningjourney')
+                : get_string('managerstatus_notcomplete', 'local_learningjourney');
+
+            $items[] = \html_writer::tag('li', format_string($cm->name) . ' - ' . $status);
+        }
+
+        if (empty($items)) {
+            return '-';
+        }
+
+        return \html_writer::tag('ul', implode('', $items), ['style' => 'margin:0;padding-right:18px;']);
     }
 
     /**

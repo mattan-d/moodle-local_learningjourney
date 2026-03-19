@@ -254,6 +254,43 @@ function local_learningjourney_get_manager_rows_preview(\stdClass $course, ?\cm_
     return $rowsbymanager;
 }
 
+/**
+ * Build preview HTML list of all activity statuses for one learner.
+ *
+ * @param \stdClass $course
+ * @param int $userid
+ * @return string
+ */
+function local_learningjourney_build_activity_status_list_preview(\stdClass $course, int $userid): string {
+    $completion = new completion_info($course);
+    $modinfo = get_fast_modinfo($course);
+    $cms = $modinfo->get_cms();
+
+    $items = [];
+    foreach ($cms as $cm) {
+        if (!$cm->uservisible) {
+            continue;
+        }
+        if (!$completion->is_enabled($cm)) {
+            continue;
+        }
+
+        $data = $completion->get_data($cm, false, $userid);
+        $iscomplete = !empty($data) && !empty($data->completionstate);
+        $status = $iscomplete
+            ? get_string('managerstatus_complete', 'local_learningjourney')
+            : get_string('managerstatus_notcomplete', 'local_learningjourney');
+
+        $items[] = html_writer::tag('li', format_string($cm->name) . ' - ' . $status);
+    }
+
+    if (empty($items)) {
+        return '-';
+    }
+
+    return html_writer::tag('ul', implode('', $items), ['style' => 'margin:0;padding-right:18px;']);
+}
+
 $courseid = required_param('id', PARAM_INT);
 
 $course = get_course($courseid);
@@ -453,13 +490,11 @@ if ($previewdata) {
                 $managerrows = reset($rowsbymanager);
             }
             $table = new html_table();
-            $table->head = [get_string('fullname'), get_string('status'), get_string('completion', 'completion')];
+            $table->head = [get_string('fullname'), get_string('manageractivitystatuses', 'local_learningjourney'), get_string('completion', 'completion')];
             foreach ($managerrows as $row) {
-                $statusstr = $row->complete
-                    ? get_string('managerstatus_complete', 'local_learningjourney')
-                    : get_string('managerstatus_notcomplete', 'local_learningjourney');
                 $progressstr = get_string('managerprogress', 'local_learningjourney', $row->progress);
-                $table->data[] = new html_table_row([fullname($row->learner), $statusstr, $progressstr]);
+                $statuslist = local_learningjourney_build_activity_status_list_preview($course, $row->learner->id);
+                $table->data[] = new html_table_row([fullname($row->learner), $statuslist, $progressstr]);
             }
             $message .= html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', [
                 'activity' => get_string('allactivities', 'local_learningjourney'),
@@ -606,13 +641,11 @@ if ($previewexistingid && !$previewdata) {
                     $managerrows = reset($rowsbymanager);
                 }
                 $table = new html_table();
-                $table->head = [get_string('fullname'), get_string('status'), get_string('completion', 'completion')];
+                $table->head = [get_string('fullname'), get_string('manageractivitystatuses', 'local_learningjourney'), get_string('completion', 'completion')];
                 foreach ($managerrows as $row) {
-                    $statusstr = $row->complete
-                        ? get_string('managerstatus_complete', 'local_learningjourney')
-                        : get_string('managerstatus_notcomplete', 'local_learningjourney');
                     $progressstr = get_string('managerprogress', 'local_learningjourney', $row->progress);
-                    $table->data[] = new html_table_row([fullname($row->learner), $statusstr, $progressstr]);
+                    $statuslist = local_learningjourney_build_activity_status_list_preview($course, $row->learner->id);
+                    $table->data[] = new html_table_row([fullname($row->learner), $statuslist, $progressstr]);
                 }
                 $message .= html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', [
                     'activity' => get_string('allactivities', 'local_learningjourney'),

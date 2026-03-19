@@ -44,6 +44,7 @@ $string['managerstatusheading'] = 'סטטוס לומדים בפעילות {$a->a
 $string['managerstatus_complete'] = 'הושלמה';
 $string['managerstatus_notcomplete'] = 'לא הושלמה';
 $string['managerprogress'] = 'אחוז התקדמות: {$a}%';
+$string['manageractivitystatuses'] = 'סטטוס פעילויות';
 
 $string['previewheading'] = 'תצוגה מקדימה של מייל התזכורת';
 $string['previewsubjectlabel'] = 'נושא:';

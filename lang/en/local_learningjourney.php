@@ -44,6 +44,7 @@ $string['managerstatusheading'] = 'Learner progress for activity {$a->activity}'
 $string['managerstatus_complete'] = 'Completed';
 $string['managerstatus_notcomplete'] = 'Not completed';
 $string['managerprogress'] = 'Progress: {$a}%';
+$string['manageractivitystatuses'] = 'Activity statuses';
 
 $string['previewheading'] = 'Reminder email preview';
 $string['previewsubjectlabel'] = 'Subject:';
