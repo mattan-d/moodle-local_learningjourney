@@ -61,9 +61,13 @@ class reminder_form extends moodleform {
         $mform->addElement('static', 'placeholders', get_string('placeholdersheading', 'local_learningjourney'),
             get_string('placeholdershelp', 'local_learningjourney'));
 
+        $context = \context_course::instance($courseid);
         $editoroptions = [
-            'maxfiles' => 0,
-            'trusttext' => false,
+            // Allow inserting images via the editor file picker.
+            'maxfiles' => 10,
+            'trusttext' => true,
+            'context' => $context,
+            'subdirs' => 0,
         ];
         // כל סוגי התזכורות (סטודנט/מנהל) משתמשים באותו שדה הודעה אישית.
         $mform->addElement('editor', 'message_editor', get_string('message', 'local_learningjourney'), null, $editoroptions);
@@ -109,6 +113,8 @@ class reminder_form extends moodleform {
 
         if (isset($data->message_editor)) {
             $data->message = $data->message_editor['text'];
+            $data->messageformat = $data->message_editor['format'] ?? FORMAT_HTML;
+            $data->messageitemid = (int)($data->message_editor['itemid'] ?? 0);
             unset($data->message_editor);
         }
 

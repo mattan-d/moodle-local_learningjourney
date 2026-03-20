@@ -2,6 +2,7 @@
 
 require('../../config.php');
 require_once($CFG->libdir . '/completionlib.php');
+require_once($CFG->libdir . '/filelib.php');
 
 /**
  * Replace placeholders in preview subject/body.
@@ -374,6 +375,17 @@ if ($mform->is_cancelled()) {
         $record->timemodified = time();
 
         $DB->update_record('local_learningjourney', $record);
+
+        // Persist any embedded images/files from the editor draft area.
+        if (!empty($data->messageitemid)) {
+            file_save_draft_area_files(
+                (int)$data->messageitemid,
+                $context->id,
+                'local_learningjourney',
+                'message',
+                (int)$record->id
+            );
+        }
     } else {
         // Insert new reminder.
         $record = new stdClass();
@@ -390,7 +402,18 @@ if ($mform->is_cancelled()) {
         $record->timecreated = time();
         $record->timemodified = time();
 
-        $DB->insert_record('local_learningjourney', $record);
+        $record->id = $DB->insert_record('local_learningjourney', $record);
+
+        // Persist any embedded images/files from the editor draft area.
+        if (!empty($data->messageitemid)) {
+            file_save_draft_area_files(
+                (int)$data->messageitemid,
+                $context->id,
+                'local_learningjourney',
+                'message',
+                (int)$record->id
+            );
+        }
     }
 
     redirect(
