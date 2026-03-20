@@ -131,7 +131,16 @@ class send_reminders extends \core\task\scheduled_task {
                 $rawsubject = $reminder->subject ?: $this->get_default_subject($course, $cm);
                 $subject = $this->replace_placeholders($rawsubject, $user, $course, $cm, $activityurl, $courseurl);
 
-                $messagehtml = $this->render_message($reminder->message, $user, $course, $cm, $activityurl, $courseurl);
+                $messagehtml = $this->render_message(
+                    $reminder->message,
+                    $user,
+                    $course,
+                    $cm,
+                    $activityurl,
+                    $courseurl,
+                    $context,
+                    (int)$reminder->id
+                );
 
                 // If this reminder is for "all activities in course", append per-activity status table for this learner.
                 if (!$cm) {
@@ -178,7 +187,8 @@ class send_reminders extends \core\task\scheduled_task {
                 $course,
                 $cm,
                 $activityurl,
-                $courseurl
+                $courseurl,
+                $context
             );
         }
 
@@ -236,10 +246,20 @@ class send_reminders extends \core\task\scheduled_task {
         \stdClass $course,
         $cm,
         moodle_url $activityurl,
-        moodle_url $courseurl
+        moodle_url $courseurl,
+        \context_course $context,
+        int $reminderid
     ): string {
         $message = $rawmessage ?? get_string('defaultmessage', 'local_learningjourney');
         $message = $this->replace_placeholders($message, $user, $course, $cm, $activityurl, $courseurl);
+
+        // Rewrite embedded @@PLUGINFILE@@ tokens into URLs for files stored with this reminder.
+        $message = format_text($message, FORMAT_HTML, [
+            'context' => $context,
+            'component' => 'local_learningjourney',
+            'filearea' => 'message',
+            'itemid' => $reminderid,
+        ]);
 
         // Intentionally do not add any automatic footer.
 
@@ -263,7 +283,8 @@ class send_reminders extends \core\task\scheduled_task {
         \stdClass $course,
         $cm,
         moodle_url $activityurl,
-        moodle_url $courseurl
+        moodle_url $courseurl,
+        \context_course $context
     ): int {
         global $DB;
 
@@ -280,6 +301,12 @@ class send_reminders extends \core\task\scheduled_task {
 
             $message = $reminder->message ?: get_string('defaultmanagermessage', 'local_learningjourney');
             $message = $this->replace_placeholders($message, $manager, $course, $cm, $activityurl, $courseurl);
+            $message = format_text($message, FORMAT_HTML, [
+                'context' => $context,
+                'component' => 'local_learningjourney',
+                'filearea' => 'message',
+                'itemid' => (int)$reminder->id,
+            ]);
 
             $activityname = $cm ? format_string($cm->name) : get_string('allactivities', 'local_learningjourney');
 

@@ -610,6 +610,12 @@ if ($previewexistingid && !$previewdata) {
 
             $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
             $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, $cm, $activityurl, $courseurl);
+            $message = format_text($message, FORMAT_HTML, [
+                'context' => $context,
+                'component' => 'local_learningjourney',
+                'filearea' => 'message',
+                'itemid' => (int)$reminder->id,
+            ]);
 
             if (($reminder->targettype ?? 'student') === 'manager') {
                 $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, $cm, $reminder->completionfilter ?? 'all');
@@ -656,6 +662,12 @@ if ($previewexistingid && !$previewdata) {
 
             $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
             $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, null, $courseurl, $courseurl);
+            $message = format_text($message, FORMAT_HTML, [
+                'context' => $context,
+                'component' => 'local_learningjourney',
+                'filearea' => 'message',
+                'itemid' => (int)$reminder->id,
+            ]);
 
             if (($reminder->targettype ?? 'student') === 'manager') {
                 $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, null, $reminder->completionfilter ?? 'all');
