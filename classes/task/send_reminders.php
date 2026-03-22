@@ -282,6 +282,9 @@ class send_reminders extends \core\task\scheduled_task {
             return $message;
         }
 
+        $message = preg_replace('/@@pluginfile@@\//i', '@@PLUGINFILE@@/', $message);
+        $message = preg_replace('#@@PLUGINFILE@@([^/])#', '@@PLUGINFILE@@/$1', $message);
+
         return file_rewrite_pluginfile_urls(
             $message,
             'pluginfile.php',

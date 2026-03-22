@@ -5,6 +5,7 @@ namespace local_learningjourney\form;
 defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->libdir . '/formslib.php');
+require_once($CFG->libdir . '/filelib.php');
 
 use moodleform;
 
@@ -69,7 +70,7 @@ class reminder_form extends moodleform {
             'context' => $context,
             'subdirs' => 0,
         ];
-        // כל סוגי התזכורות (סטודנט/מנהל) משתמשים באותו שדה הודעה אישית.
+        // Student and manager reminders share the same personal message field.
         $mform->addElement('editor', 'message_editor', get_string('message', 'local_learningjourney'), null, $editoroptions);
         $mform->addElement('advcheckbox', 'enabled', get_string('enabled', 'local_learningjourney'));
         $mform->setDefault('enabled', 1);
@@ -92,16 +93,50 @@ class reminder_form extends moodleform {
     }
 
     public function set_data($defaultvalues) {
-        if (!empty($defaultvalues->message)) {
-            $defaultvalues->message_editor = [
-                'text' => $defaultvalues->message,
-                'format' => FORMAT_HTML,
+        $customdata = $this->_customdata ?? [];
+        $courseid = (int)($customdata['courseid'] ?? 0);
+
+        if ($courseid > 0) {
+            $context = \context_course::instance($courseid);
+            global $CFG;
+            $prepareopts = [
+                'subdirs' => false,
+                'forcehttps' => strpos($CFG->wwwroot, 'https://') === 0,
             ];
+
+            // Editing: copy embedded files from the plugin area into a new draft and rewrite @@PLUGINFILE@@ for the editor.
+            if (!empty($defaultvalues->reminderid)) {
+                $reminderdbid = (int)$defaultvalues->reminderid;
+                $draftitemid = 0;
+                $text = $defaultvalues->message ?? '';
+                $text = file_prepare_draft_area(
+                    $draftitemid,
+                    $context->id,
+                    'local_learningjourney',
+                    'message',
+                    $reminderdbid,
+                    $prepareopts,
+                    $text
+                );
+                $defaultvalues->message_editor = [
+                    'text' => $text,
+                    'format' => FORMAT_HTML,
+                    'itemid' => $draftitemid,
+                ];
+                unset($defaultvalues->message);
+            } else if (!empty($defaultvalues->message)) {
+                $defaultvalues->message_editor = [
+                    'text' => $defaultvalues->message,
+                    'format' => FORMAT_HTML,
+                ];
+                unset($defaultvalues->message);
+            }
         }
-        // If editing an existing reminder, pass its id into reminderid field.
+
         if (!empty($defaultvalues->reminderid)) {
             $defaultvalues->reminderid = (int)$defaultvalues->reminderid;
         }
+
         parent::set_data($defaultvalues);
     }
 

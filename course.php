@@ -140,8 +140,11 @@ function local_learningjourney_wrap_email_html_preview(string $subject, string $
 /**
  * Resolve draft or saved pluginfile URLs in reminder message HTML for display.
  *
- * @param string $html Raw HTML from editor or DB.
- * @param context_course $context Course context.
+ * Moodle 4.4+ format_text() no longer accepts component/filearea/itemid; callers must run
+ * file_rewrite_pluginfile_urls() first. Draft files live in the user context, not the course.
+ *
+ * @param string $html Raw HTML from editor or DB (may contain @@PLUGINFILE@@/...).
+ * @param context_course $context Course context (for saved reminder files and format_text).
  * @param int $draftitemid Draft item id when previewing unsaved form data.
  * @param int $reminderitemid Reminder id when rendering stored message.
  * @return string
@@ -152,24 +155,44 @@ function local_learningjourney_format_message_embeds(
     int $draftitemid = 0,
     int $reminderitemid = 0
 ): string {
-    $options = [
+    global $CFG, $USER;
+
+    // file_rewrite_pluginfile_urls() only matches @@PLUGINFILE@@/ exactly.
+    $html = preg_replace('/@@pluginfile@@\//i', '@@PLUGINFILE@@/', $html);
+    $html = preg_replace('#@@PLUGINFILE@@([^/])#', '@@PLUGINFILE@@/$1', $html);
+
+    $forcehttps = strpos($CFG->wwwroot, 'https://') === 0;
+
+    if ($draftitemid > 0) {
+        $usercontext = context_user::instance($USER->id);
+        $html = file_rewrite_pluginfile_urls(
+            $html,
+            'pluginfile.php',
+            $usercontext->id,
+            'user',
+            'draft',
+            $draftitemid,
+            ['forcehttps' => $forcehttps]
+        );
+    } else if ($reminderitemid > 0) {
+        $html = file_rewrite_pluginfile_urls(
+            $html,
+            'pluginfile.php',
+            $context->id,
+            'local_learningjourney',
+            'message',
+            $reminderitemid,
+            ['forcehttps' => $forcehttps]
+        );
+    }
+
+    return format_text($html, FORMAT_HTML, [
         'context' => $context,
         'noclean' => true,
         'filter' => false,
         'para' => false,
         'overflowdiv' => true,
-    ];
-    if ($draftitemid > 0) {
-        $options['component'] = 'user';
-        $options['filearea'] = 'draft';
-        $options['itemid'] = $draftitemid;
-    } else if ($reminderitemid > 0) {
-        $options['component'] = 'local_learningjourney';
-        $options['filearea'] = 'message';
-        $options['itemid'] = $reminderitemid;
-    }
-
-    return format_text($html, FORMAT_HTML, $options);
+    ]);
 }
 
 /**
