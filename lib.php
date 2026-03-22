@@ -14,6 +14,10 @@ defined('MOODLE_INTERNAL') || die();
  * @param array $options Extra options for send_stored_file.
  * @return bool False if access denied or file missing.
  *
+ * Embedded images use plain pluginfile.php URLs. Valid image files under a real reminder may be served
+ * without a Moodle login so email clients and external viewers can load them. Non-image files still
+ * require login plus manage capability or course enrolment.
+ *
  * @copyright 2026 CentricApp LTD. dev@centricapp.co.il
  */
 function local_learningjourney_pluginfile($course, $cm, $context, $filearea, $args, $forcedownload, array $options = []) {
@@ -26,8 +30,6 @@ function local_learningjourney_pluginfile($course, $cm, $context, $filearea, $ar
     if ($context->contextlevel != CONTEXT_COURSE) {
         return false;
     }
-
-    require_login($course);
 
     $reminderid = (int)array_shift($args);
     if ($reminderid < 1) {
@@ -42,12 +44,6 @@ function local_learningjourney_pluginfile($course, $cm, $context, $filearea, $ar
         return false;
     }
 
-    $canmanage = has_capability('local/learningjourney:managereminders', $context);
-    $enrolled = is_enrolled($context, null, '', true);
-    if (!$canmanage && !$enrolled) {
-        return false;
-    }
-
     $filename = array_pop($args);
     if ($filename === null || $filename === '') {
         return false;
@@ -58,6 +54,17 @@ function local_learningjourney_pluginfile($course, $cm, $context, $filearea, $ar
     $file = $fs->get_file($context->id, 'local_learningjourney', 'message', $reminderid, $filepath, $filename);
     if (!$file || $file->is_directory()) {
         return false;
+    }
+
+    $publicimage = $file->is_valid_image();
+
+    if (!$publicimage) {
+        require_login($course);
+        $canmanage = has_capability('local/learningjourney:managereminders', $context);
+        $enrolled = is_enrolled($context, null, '', true);
+        if (!$canmanage && !$enrolled) {
+            return false;
+        }
     }
 
     \core\session\manager::write_close();
