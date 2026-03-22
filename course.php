@@ -138,6 +138,41 @@ function local_learningjourney_wrap_email_html_preview(string $subject, string $
 }
 
 /**
+ * Resolve draft or saved pluginfile URLs in reminder message HTML for display.
+ *
+ * @param string $html Raw HTML from editor or DB.
+ * @param context_course $context Course context.
+ * @param int $draftitemid Draft item id when previewing unsaved form data.
+ * @param int $reminderitemid Reminder id when rendering stored message.
+ * @return string
+ */
+function local_learningjourney_format_message_embeds(
+    string $html,
+    context_course $context,
+    int $draftitemid = 0,
+    int $reminderitemid = 0
+): string {
+    $options = [
+        'context' => $context,
+        'noclean' => true,
+        'filter' => false,
+        'para' => false,
+        'overflowdiv' => true,
+    ];
+    if ($draftitemid > 0) {
+        $options['component'] = 'user';
+        $options['filearea'] = 'draft';
+        $options['itemid'] = $draftitemid;
+    } else if ($reminderitemid > 0) {
+        $options['component'] = 'local_learningjourney';
+        $options['filearea'] = 'message';
+        $options['itemid'] = $reminderitemid;
+    }
+
+    return format_text($html, FORMAT_HTML, $options);
+}
+
+/**
  * Preview helper: match user against selected filter.
  *
  * @param completion_info $completion
@@ -327,6 +362,8 @@ $deleteid = optional_param('deleteid', 0, PARAM_INT);
 // Handle delete action (with sesskey protection).
 if ($deleteid && confirm_sesskey()) {
     if ($todelete = $DB->get_record('local_learningjourney', ['id' => $deleteid, 'courseid' => $course->id], '*', IGNORE_MISSING)) {
+        $fs = get_file_storage();
+        $fs->delete_area_files($context->id, 'local_learningjourney', 'message', (int)$todelete->id);
         $DB->delete_records('local_learningjourney', ['id' => $deleteid]);
         redirect(
             new moodle_url('/local/learningjourney/course.php', ['id' => $course->id]),
@@ -376,15 +413,20 @@ if ($mform->is_cancelled()) {
 
         $DB->update_record('local_learningjourney', $record);
 
-        // Persist any embedded images/files from the editor draft area.
+        // Persist embedded files and rewrite draftfile.php links to @@PLUGINFILE@@ in stored HTML.
         if (!empty($data->messageitemid)) {
-            file_save_draft_area_files(
+            $rewritten = file_save_draft_area_files(
                 (int)$data->messageitemid,
                 $context->id,
                 'local_learningjourney',
                 'message',
-                (int)$record->id
+                (int)$record->id,
+                null,
+                (string)($data->message ?? '')
             );
+            if ($rewritten !== null) {
+                $DB->set_field('local_learningjourney', 'message', $rewritten, ['id' => $record->id]);
+            }
         }
     } else {
         // Insert new reminder.
@@ -404,15 +446,20 @@ if ($mform->is_cancelled()) {
 
         $record->id = $DB->insert_record('local_learningjourney', $record);
 
-        // Persist any embedded images/files from the editor draft area.
+        // Persist embedded files and rewrite draftfile.php links to @@PLUGINFILE@@ in stored HTML.
         if (!empty($data->messageitemid)) {
-            file_save_draft_area_files(
+            $rewritten = file_save_draft_area_files(
                 (int)$data->messageitemid,
                 $context->id,
                 'local_learningjourney',
                 'message',
-                (int)$record->id
+                (int)$record->id,
+                null,
+                (string)($data->message ?? '')
             );
+            if ($rewritten !== null) {
+                $DB->set_field('local_learningjourney', 'message', $rewritten, ['id' => $record->id]);
+            }
         }
     }
 
@@ -459,6 +506,12 @@ if ($previewdata) {
 
         $message = $previewdata->message ?? get_string('defaultmessage', 'local_learningjourney');
         $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, $cm, $activityurl, $courseurl);
+        $message = local_learningjourney_format_message_embeds(
+            $message,
+            $context,
+            (int)($previewdata->messageitemid ?? 0),
+            0
+        );
 
         // Manager preview: show the same summary table structure sent by cron.
         if (($previewdata->targettype ?? 'student') === 'manager') {
@@ -505,6 +558,12 @@ if ($previewdata) {
 
         $message = $previewdata->message ?? get_string('defaultmessage', 'local_learningjourney');
         $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, null, $courseurl, $courseurl);
+        $message = local_learningjourney_format_message_embeds(
+            $message,
+            $context,
+            (int)($previewdata->messageitemid ?? 0),
+            0
+        );
 
         if (($previewdata->targettype ?? 'student') === 'manager') {
             $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, null, $previewdata->completionfilter ?? 'all');
@@ -610,12 +669,7 @@ if ($previewexistingid && !$previewdata) {
 
             $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
             $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, $cm, $activityurl, $courseurl);
-            $message = format_text($message, FORMAT_HTML, [
-                'context' => $context,
-                'component' => 'local_learningjourney',
-                'filearea' => 'message',
-                'itemid' => (int)$reminder->id,
-            ]);
+            $message = local_learningjourney_format_message_embeds($message, $context, 0, (int)$reminder->id);
 
             if (($reminder->targettype ?? 'student') === 'manager') {
                 $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, $cm, $reminder->completionfilter ?? 'all');
@@ -662,12 +716,7 @@ if ($previewexistingid && !$previewdata) {
 
             $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
             $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, null, $courseurl, $courseurl);
-            $message = format_text($message, FORMAT_HTML, [
-                'context' => $context,
-                'component' => 'local_learningjourney',
-                'filearea' => 'message',
-                'itemid' => (int)$reminder->id,
-            ]);
+            $message = local_learningjourney_format_message_embeds($message, $context, 0, (int)$reminder->id);
 
             if (($reminder->targettype ?? 'student') === 'manager') {
                 $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, null, $reminder->completionfilter ?? 'all');

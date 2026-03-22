@@ -253,17 +253,47 @@ class send_reminders extends \core\task\scheduled_task {
         $message = $rawmessage ?? get_string('defaultmessage', 'local_learningjourney');
         $message = $this->replace_placeholders($message, $user, $course, $cm, $activityurl, $courseurl);
 
-        // Rewrite embedded @@PLUGINFILE@@ tokens into URLs for files stored with this reminder.
-        $message = format_text($message, FORMAT_HTML, [
-            'context' => $context,
-            'component' => 'local_learningjourney',
-            'filearea' => 'message',
-            'itemid' => $reminderid,
-        ]);
+        // Use per-recipient token URLs so embedded images load in email clients without a Moodle login.
+        $message = $this->rewrite_message_files_for_email($message, $context, $reminderid, (int)$user->id);
 
         // Intentionally do not add any automatic footer.
 
         return $message;
+    }
+
+    /**
+     * Turn @@PLUGINFILE@@ paths into tokenpluginfile.php URLs for a specific recipient.
+     *
+     * @param string $message HTML still containing @@PLUGINFILE@@/... from the database.
+     * @param \context_course $context Course context where files are stored.
+     * @param int $reminderid Reminder id (file itemid).
+     * @param int $recipientuserid User who receives the email (token is scoped to this user).
+     * @return string
+     */
+    protected function rewrite_message_files_for_email(
+        string $message,
+        \context_course $context,
+        int $reminderid,
+        int $recipientuserid
+    ): string {
+        global $CFG;
+
+        if ($reminderid < 1 || $recipientuserid < 1) {
+            return $message;
+        }
+
+        return file_rewrite_pluginfile_urls(
+            $message,
+            'pluginfile.php',
+            $context->id,
+            'local_learningjourney',
+            'message',
+            $reminderid,
+            [
+                'includetoken' => $recipientuserid,
+                'forcehttps' => strpos($CFG->wwwroot, 'https://') === 0,
+            ]
+        );
     }
 
     /**
@@ -301,12 +331,12 @@ class send_reminders extends \core\task\scheduled_task {
 
             $message = $reminder->message ?: get_string('defaultmanagermessage', 'local_learningjourney');
             $message = $this->replace_placeholders($message, $manager, $course, $cm, $activityurl, $courseurl);
-            $message = format_text($message, FORMAT_HTML, [
-                'context' => $context,
-                'component' => 'local_learningjourney',
-                'filearea' => 'message',
-                'itemid' => (int)$reminder->id,
-            ]);
+            $message = $this->rewrite_message_files_for_email(
+                $message,
+                $context,
+                (int)$reminder->id,
+                (int)$manager->id
+            );
 
             $activityname = $cm ? format_string($cm->name) : get_string('allactivities', 'local_learningjourney');
 
