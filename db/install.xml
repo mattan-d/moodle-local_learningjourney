@@ -6,6 +6,7 @@
                 <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
                 <FIELD NAME="courseid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
                 <FIELD NAME="cmid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Course module id"/>
+                <FIELD NAME="cmids" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON array of course module ids (0 means all activities); replaces cmid when set"/>
                 <FIELD NAME="timetosend" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Time when reminder should be sent"/>
                 <FIELD NAME="completionfilter" TYPE="char" LENGTH="20" NOTNULL="true" SEQUENCE="false" COMMENT="completed, notcompleted, all"/>
                 <FIELD NAME="subject" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false"/>

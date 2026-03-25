@@ -425,7 +425,8 @@ if ($mform->is_cancelled()) {
     if (!empty($data->reminderid)) {
         // Update existing reminder.
         $record = $DB->get_record('local_learningjourney', ['id' => $data->reminderid, 'courseid' => $course->id], '*', MUST_EXIST);
-        $record->cmid = $data->cmid;
+        $record->cmid = (int)$data->cmid;
+        $record->cmids = json_encode($data->cmids ?? [(int)$data->cmid]);
         $record->timetosend = $data->timetosend;
         $record->completionfilter = $data->completionfilter;
         $record->subject = $data->subject ?? null;
@@ -455,7 +456,8 @@ if ($mform->is_cancelled()) {
         // Insert new reminder.
         $record = new stdClass();
         $record->courseid = $course->id;
-        $record->cmid = $data->cmid;
+        $record->cmid = (int)$data->cmid;
+        $record->cmids = json_encode($data->cmids ?? [(int)$data->cmid]);
         $record->timetosend = $data->timetosend;
         $record->completionfilter = $data->completionfilter;
         $record->subject = $data->subject ?? null;
@@ -513,8 +515,18 @@ if (!$previewpopup && !empty($reminderid)) {
 if ($previewdata) {
     global $USER, $SITE;
 
-    if (!empty($previewdata->cmid) && isset($cms[$previewdata->cmid])) {
-        $cm = $cms[$previewdata->cmid];
+    $selectedcmids = $previewdata->cmids ?? [(int)($previewdata->cmid ?? 0)];
+    if (!is_array($selectedcmids)) {
+        $selectedcmids = [(int)$selectedcmids];
+    }
+    $selectedcmids = array_values(array_unique(array_map('intval', $selectedcmids)));
+    if (in_array(0, $selectedcmids, true)) {
+        $selectedcmids = [0];
+    }
+
+    // Single activity preview (legacy behavior) when exactly one real cmid selected.
+    if (count($selectedcmids) === 1 && !empty($selectedcmids[0]) && isset($cms[$selectedcmids[0]])) {
+        $cm = $cms[$selectedcmids[0]];
 
         $activityurl = new moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]);
         $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
@@ -569,7 +581,7 @@ if ($previewdata) {
         ]);
         local_learningjourney_render_preview_card($subject, $message, $popupurl);
     } else {
-        // Preview for "all activities in course" (cmid = 0).
+        // Preview for "all activities" or multiple selected activities.
         $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
 
         $subject = !empty($previewdata->subject)
@@ -602,13 +614,15 @@ if ($previewdata) {
                 $table->data[] = new html_table_row([fullname($row->learner), $statuslist, $progressstr]);
             }
             $message .= html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', [
-                'activity' => get_string('allactivities', 'local_learningjourney'),
+                'activity' => (count($selectedcmids) > 1 || (count($selectedcmids) === 1 && $selectedcmids[0] === 0))
+                    ? get_string('allactivities', 'local_learningjourney')
+                    : get_string('allactivities', 'local_learningjourney'),
             ]));
             if (!empty($table->data)) {
                 $message .= html_writer::table($table);
             }
         } else {
-            // Student preview for all activities: activity statuses + course progress.
+            // Student preview for all activities or multiple: activity statuses + course progress.
             $completion = new completion_info($course);
             $modinfo = get_fast_modinfo($course);
             $cmsall = $modinfo->get_cms();
@@ -620,6 +634,10 @@ if ($previewdata) {
             ];
 
             foreach ($cmsall as $cmitem) {
+                // If specific activities selected, only include them.
+                if (!empty($selectedcmids) && $selectedcmids !== [0] && !in_array((int)$cmitem->id, $selectedcmids, true)) {
+                    continue;
+                }
                 if (!$cmitem->uservisible) {
                     continue;
                 }
@@ -642,7 +660,9 @@ if ($previewdata) {
 
             if (!empty($table->data)) {
                 $message .= html_writer::tag('h4', get_string('managerstatusheading', 'local_learningjourney', [
-                    'activity' => get_string('allactivities', 'local_learningjourney'),
+                    'activity' => ($selectedcmids === [0])
+                        ? get_string('allactivities', 'local_learningjourney')
+                        : get_string('activity', 'local_learningjourney'),
                 ]));
                 $message .= html_writer::table($table);
             }

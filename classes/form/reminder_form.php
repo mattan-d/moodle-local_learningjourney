@@ -28,12 +28,18 @@ class reminder_form extends moodleform {
 
         $mform->addElement('header', 'general', get_string('remindersettings', 'local_learningjourney'));
 
-        // Add "all activities in course" as default option.
+        // Activity selection (multi-select). Option 0 means "all activities in this course".
         $activityoptions = [0 => get_string('activity_all', 'local_learningjourney')] + $modoptions;
 
-        $mform->addElement('select', 'cmid', get_string('activity', 'local_learningjourney'), $activityoptions);
-        $mform->addRule('cmid', null, 'required', null, 'client');
-        $mform->setDefault('cmid', 0);
+        $mform->addElement('autocomplete', 'cmids', get_string('activity', 'local_learningjourney'), $activityoptions, [
+            'multiple' => true,
+            'noselectionstring' => get_string('choose'),
+        ]);
+        $mform->setDefault('cmids', [0]);
+
+        // Keep legacy cmid for backwards compatibility; populated on submit.
+        $mform->addElement('hidden', 'cmid', 0);
+        $mform->setType('cmid', PARAM_INT);
 
         $mform->addElement('date_time_selector', 'timetosend', get_string('timetosend', 'local_learningjourney'));
         $mform->addRule('timetosend', null, 'required', null, 'client');
@@ -133,6 +139,18 @@ class reminder_form extends moodleform {
             }
         }
 
+        // Convert stored cmids JSON into array for the multiselect.
+        if (!empty($defaultvalues->cmids) && is_string($defaultvalues->cmids)) {
+            $decoded = json_decode($defaultvalues->cmids, true);
+            if (is_array($decoded)) {
+                $defaultvalues->cmids = array_map('intval', $decoded);
+            }
+        } else if (!empty($defaultvalues->cmid) && empty($defaultvalues->cmids)) {
+            $defaultvalues->cmids = [(int)$defaultvalues->cmid];
+        } else if (empty($defaultvalues->cmids)) {
+            $defaultvalues->cmids = [0];
+        }
+
         if (!empty($defaultvalues->reminderid)) {
             $defaultvalues->reminderid = (int)$defaultvalues->reminderid;
         }
@@ -152,6 +170,27 @@ class reminder_form extends moodleform {
             $data->messageitemid = (int)($data->message_editor['itemid'] ?? 0);
             unset($data->message_editor);
         }
+
+        // Normalize cmids:
+        // - if 0 (all activities) is selected, ignore all other selections.
+        // - ensure it is an array of ints.
+        $cmids = [];
+        if (isset($data->cmids)) {
+            if (is_array($data->cmids)) {
+                $cmids = array_map('intval', $data->cmids);
+            } else if ($data->cmids !== null && $data->cmids !== '') {
+                $cmids = [(int)$data->cmids];
+            }
+        }
+        $cmids = array_values(array_unique($cmids));
+        if (in_array(0, $cmids, true)) {
+            $cmids = [0];
+        }
+        if (empty($cmids)) {
+            $cmids = [0];
+        }
+        $data->cmids = $cmids;
+        $data->cmid = (int)$cmids[0];
 
         return $data;
     }

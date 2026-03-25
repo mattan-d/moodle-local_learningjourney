@@ -79,6 +79,25 @@ function xmldb_local_learningjourney_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026031604, 'local', 'learningjourney');
     }
 
+    // Add cmids field to support multiple activity selection.
+    if ($oldversion < 2026031610) {
+        $table = new xmldb_table('local_learningjourney');
+        $fieldcmids = new xmldb_field('cmids', XMLDB_TYPE_TEXT, null, null, null, null, null, 'cmid');
+
+        if (!$dbman->field_exists($table, $fieldcmids)) {
+            $dbman->add_field($table, $fieldcmids);
+        }
+
+        // Backfill cmids from legacy cmid so existing reminders keep working.
+        $records = $DB->get_records_select('local_learningjourney', 'cmids IS NULL', []);
+        foreach ($records as $rec) {
+            $cmid = isset($rec->cmid) ? (int)$rec->cmid : 0;
+            $DB->set_field('local_learningjourney', 'cmids', json_encode([$cmid]), ['id' => $rec->id]);
+        }
+
+        upgrade_plugin_savepoint(true, 2026031610, 'local', 'learningjourney');
+    }
+
     return true;
 }
 
