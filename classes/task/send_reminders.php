@@ -527,7 +527,6 @@ class send_reminders extends \core\task\scheduled_task {
             'body{margin:0;padding:0;background:#f5f7fb;direction:rtl;text-align:right;font-family:Arial !important;color:#111827;}',
             '.container{width:100%;padding:24px 12px;}',
             '.card{max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;}',
-            '.header{padding:18px 20px;background:#0f62fe;color:#ffffff;font-size:16px;font-weight:bold;font-family:Arial !important;}',
             '.content{padding:20px;font-family:Arial !important;}',
             '.content *{font-family:Arial !important;}',
             '.content h4{margin:18px 0 10px 0;font-size:14px;}',
@@ -547,7 +546,6 @@ class send_reminders extends \core\task\scheduled_task {
             '<body>' .
             '<div class="container">' .
             '<div class="card">' .
-            '<div class="header">' . $title . '</div>' .
             '<div class="content">' . $body . '</div>' .
             '</div>' .
             '</div>' .
