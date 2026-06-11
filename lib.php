@@ -77,6 +77,117 @@ function local_learningjourney_pluginfile($course, $cm, $context, $filearea, $ar
  * @param settings_navigation $settingsnav
  * @param context $context
  */
+/**
+ * Normalize activity ids submitted from the reminder form.
+ *
+ * @param mixed $cmids Raw form value (array, scalar, or null).
+ * @return int[] Unique activity ids; empty array means no activity selected.
+ */
+function local_learningjourney_normalize_cmids_input($cmids): array {
+    if (!isset($cmids)) {
+        return [];
+    }
+
+    if (is_array($cmids)) {
+        $normalized = array_map('intval', $cmids);
+    } else if ($cmids !== null && $cmids !== '') {
+        $normalized = [(int)$cmids];
+    } else {
+        return [];
+    }
+
+    $normalized = array_values(array_unique($normalized));
+    if (in_array(0, $normalized, true)) {
+        return [0];
+    }
+
+    return $normalized;
+}
+
+/**
+ * Parse stored cmids JSON (and legacy cmid) into an int array.
+ *
+ * @param \stdClass $reminder Reminder database record.
+ * @return int[]
+ */
+function local_learningjourney_parse_cmids(\stdClass $reminder): array {
+    if (isset($reminder->cmids) && $reminder->cmids !== null && $reminder->cmids !== '') {
+        $decoded = json_decode($reminder->cmids, true);
+        if (is_array($decoded)) {
+            return local_learningjourney_normalize_cmids_input($decoded);
+        }
+    }
+
+    if (!empty($reminder->cmid)) {
+        return [(int)$reminder->cmid];
+    }
+
+    // Legacy records without cmids: cmid 0 means all activities.
+    return [0];
+}
+
+/**
+ * Activity selection mode for a reminder.
+ *
+ * @param \stdClass $reminder Reminder database record.
+ * @return string One of: none, all, specific.
+ */
+function local_learningjourney_get_activity_mode(\stdClass $reminder): string {
+    if (isset($reminder->cmids) && $reminder->cmids !== null && $reminder->cmids !== '') {
+        $decoded = json_decode($reminder->cmids, true);
+        if (is_array($decoded)) {
+            if (empty($decoded)) {
+                return 'none';
+            }
+            $cmids = local_learningjourney_normalize_cmids_input($decoded);
+            if (empty($cmids)) {
+                return 'none';
+            }
+            if (in_array(0, $cmids, true)) {
+                return 'all';
+            }
+            return 'specific';
+        }
+    }
+
+    if (!empty($reminder->cmid)) {
+        return 'specific';
+    }
+
+    return 'all';
+}
+
+/**
+ * Human-readable label for the activity column in the reminders list.
+ *
+ * @param \stdClass $reminder Reminder database record.
+ * @param array $modoptions cmid => activity name map.
+ * @return string
+ */
+function local_learningjourney_format_reminder_activity_label(\stdClass $reminder, array $modoptions): string {
+    $mode = local_learningjourney_get_activity_mode($reminder);
+    if ($mode === 'none') {
+        return get_string('activity_none', 'local_learningjourney');
+    }
+    if ($mode === 'all') {
+        return get_string('activity_all', 'local_learningjourney');
+    }
+
+    $cmids = local_learningjourney_parse_cmids($reminder);
+    $labels = [];
+    foreach ($cmids as $cmid) {
+        if (isset($modoptions[$cmid])) {
+            $labels[] = $modoptions[$cmid];
+        }
+    }
+
+    if (!empty($labels)) {
+        return implode(', ', $labels);
+    }
+
+    return (string)($cmids[0] ?? '');
+}
+
 function local_learningjourney_extend_settings_navigation(settings_navigation $settingsnav, context $context) {
     if (!$context instanceof context_course) {
         return;

@@ -23,11 +23,18 @@ function local_learningjourney_replace_placeholders_preview(
     \stdClass $course,
     ?\cm_info $cm,
     moodle_url $activityurl,
-    moodle_url $courseurl
+    moodle_url $courseurl,
+    string $activitymode = 'specific'
 ): string {
     global $CFG, $DB;
 
-    $activityname = $cm ? format_string($cm->name) : get_string('allactivities', 'local_learningjourney');
+    if ($cm) {
+        $activityname = format_string($cm->name);
+    } else if ($activitymode === 'none') {
+        $activityname = '';
+    } else {
+        $activityname = get_string('allactivities', 'local_learningjourney');
+    }
     $modname = $cm ? (string)$cm->modname : 'course';
 
     // Best-effort due/close date extraction.
@@ -422,8 +429,8 @@ if ($mform->is_cancelled()) {
     if (!empty($data->reminderid)) {
         // Update existing reminder.
         $record = $DB->get_record('local_learningjourney', ['id' => $data->reminderid, 'courseid' => $course->id], '*', MUST_EXIST);
-        $record->cmid = (int)$data->cmid;
-        $record->cmids = json_encode($data->cmids ?? [(int)$data->cmid]);
+        $record->cmid = !empty($data->cmids) ? (int)$data->cmids[0] : 0;
+        $record->cmids = json_encode($data->cmids ?? []);
         $record->timetosend = $data->timetosend;
         $record->completionfilter = $data->completionfilter;
         $record->subject = $data->subject ?? null;
@@ -453,8 +460,8 @@ if ($mform->is_cancelled()) {
         // Insert new reminder.
         $record = new stdClass();
         $record->courseid = $course->id;
-        $record->cmid = (int)$data->cmid;
-        $record->cmids = json_encode($data->cmids ?? [(int)$data->cmid]);
+        $record->cmid = !empty($data->cmids) ? (int)$data->cmids[0] : 0;
+        $record->cmids = json_encode($data->cmids ?? []);
         $record->timetosend = $data->timetosend;
         $record->completionfilter = $data->completionfilter;
         $record->subject = $data->subject ?? null;
@@ -512,17 +519,51 @@ if (!$previewpopup && !empty($reminderid)) {
 if ($previewdata) {
     global $USER, $SITE;
 
-    $selectedcmids = $previewdata->cmids ?? [(int)($previewdata->cmid ?? 0)];
-    if (!is_array($selectedcmids)) {
-        $selectedcmids = [(int)$selectedcmids];
-    }
-    $selectedcmids = array_values(array_unique(array_map('intval', $selectedcmids)));
-    if (in_array(0, $selectedcmids, true)) {
-        $selectedcmids = [0];
-    }
+    $selectedcmids = local_learningjourney_normalize_cmids_input($previewdata->cmids ?? null);
+    $previewmode = empty($selectedcmids) ? 'none' : (in_array(0, $selectedcmids, true) ? 'all' : 'specific');
 
-    // Single activity preview (legacy behavior) when exactly one real cmid selected.
-    if (count($selectedcmids) === 1 && !empty($selectedcmids[0]) && isset($cms[$selectedcmids[0]])) {
+    if ($previewmode === 'none') {
+        $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
+
+        $subject = !empty($previewdata->subject)
+            ? $previewdata->subject
+            : get_string('defaultsubject_noactivity', 'local_learningjourney', [
+                'course' => format_string($course->fullname),
+            ]);
+        $subject = local_learningjourney_replace_placeholders_preview(
+            $subject,
+            $USER,
+            $course,
+            null,
+            $courseurl,
+            $courseurl,
+            'none'
+        );
+
+        $message = $previewdata->message ?? get_string('defaultmessage', 'local_learningjourney');
+        $message = local_learningjourney_replace_placeholders_preview(
+            $message,
+            $USER,
+            $course,
+            null,
+            $courseurl,
+            $courseurl,
+            'none'
+        );
+        $message = local_learningjourney_format_message_embeds(
+            $message,
+            $context,
+            (int)($previewdata->messageitemid ?? 0),
+            0
+        );
+        $message = local_learningjourney_wrap_email_html_preview($subject, $message);
+
+        $popupurl = new moodle_url('/local/learningjourney/course.php', [
+            'id' => $course->id,
+            'previewpopup' => 1,
+        ]);
+        local_learningjourney_render_preview_card($subject, $message, $popupurl);
+    } else if (count($selectedcmids) === 1 && !empty($selectedcmids[0]) && isset($cms[$selectedcmids[0]])) {
         $cm = $cms[$selectedcmids[0]];
 
         $activityurl = new moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]);
@@ -693,7 +734,46 @@ if ($previewexistingid && !$previewdata) {
 
     $reminder = $DB->get_record('local_learningjourney', ['id' => $previewexistingid, 'courseid' => $course->id], '*', IGNORE_MISSING);
     if ($reminder) {
-        if (!empty($reminder->cmid) && isset($cms[$reminder->cmid])) {
+        $existingmode = local_learningjourney_get_activity_mode($reminder);
+
+        if ($existingmode === 'none') {
+            $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
+
+            $subject = !empty($reminder->subject)
+                ? $reminder->subject
+                : get_string('defaultsubject_noactivity', 'local_learningjourney', [
+                    'course' => format_string($course->fullname),
+                ]);
+            $subject = local_learningjourney_replace_placeholders_preview(
+                $subject,
+                $USER,
+                $course,
+                null,
+                $courseurl,
+                $courseurl,
+                'none'
+            );
+
+            $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
+            $message = local_learningjourney_replace_placeholders_preview(
+                $message,
+                $USER,
+                $course,
+                null,
+                $courseurl,
+                $courseurl,
+                'none'
+            );
+            $message = local_learningjourney_format_message_embeds($message, $context, 0, (int)$reminder->id);
+            $message = local_learningjourney_wrap_email_html_preview($subject, $message);
+
+            $popupurl = new moodle_url('/local/learningjourney/course.php', [
+                'id' => $course->id,
+                'previewid' => $reminder->id,
+                'previewpopup' => 1,
+            ]);
+            local_learningjourney_render_preview_card($subject, $message, $popupurl);
+        } else if ($existingmode === 'specific' && !empty($reminder->cmid) && isset($cms[$reminder->cmid])) {
             $cm = $cms[$reminder->cmid];
 
             $activityurl = new moodle_url('/mod/' . $cm->modname . '/view.php', ['id' => $cm->id]);
@@ -864,11 +944,7 @@ if (!empty($reminders)) {
     ];
 
     foreach ($reminders as $reminder) {
-        if (empty($reminder->cmid)) {
-            $activityname = get_string('activity_all', 'local_learningjourney');
-        } else {
-            $activityname = isset($modoptions[$reminder->cmid]) ? $modoptions[$reminder->cmid] : $reminder->cmid;
-        }
+        $activityname = local_learningjourney_format_reminder_activity_label($reminder, $modoptions);
 
         $target = (!empty($reminder->targettype) && $reminder->targettype === 'manager')
             ? get_string('target_manager', 'local_learningjourney')

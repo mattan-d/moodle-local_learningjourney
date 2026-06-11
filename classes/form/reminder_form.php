@@ -35,7 +35,7 @@ class reminder_form extends moodleform {
             'multiple' => true,
             'noselectionstring' => get_string('choose'),
         ]);
-        $mform->setDefault('cmids', [0]);
+        $mform->setDefault('cmids', []);
 
         // Keep legacy cmid for backwards compatibility; populated on submit.
         $mform->addElement('hidden', 'cmid', 0);
@@ -140,15 +140,15 @@ class reminder_form extends moodleform {
         }
 
         // Convert stored cmids JSON into array for the multiselect.
-        if (!empty($defaultvalues->cmids) && is_string($defaultvalues->cmids)) {
+        if (isset($defaultvalues->cmids) && is_string($defaultvalues->cmids)) {
             $decoded = json_decode($defaultvalues->cmids, true);
             if (is_array($decoded)) {
-                $defaultvalues->cmids = array_map('intval', $decoded);
+                $defaultvalues->cmids = local_learningjourney_normalize_cmids_input($decoded);
             }
-        } else if (!empty($defaultvalues->cmid) && empty($defaultvalues->cmids)) {
+        } else if (!empty($defaultvalues->cmid) && !isset($defaultvalues->cmids)) {
             $defaultvalues->cmids = [(int)$defaultvalues->cmid];
-        } else if (empty($defaultvalues->cmids)) {
-            $defaultvalues->cmids = [0];
+        } else if (!isset($defaultvalues->cmids)) {
+            $defaultvalues->cmids = !empty($defaultvalues->reminderid) ? [0] : [];
         }
 
         if (!empty($defaultvalues->reminderid)) {
@@ -173,24 +173,9 @@ class reminder_form extends moodleform {
 
         // Normalize cmids:
         // - if 0 (all activities) is selected, ignore all other selections.
-        // - ensure it is an array of ints.
-        $cmids = [];
-        if (isset($data->cmids)) {
-            if (is_array($data->cmids)) {
-                $cmids = array_map('intval', $data->cmids);
-            } else if ($data->cmids !== null && $data->cmids !== '') {
-                $cmids = [(int)$data->cmids];
-            }
-        }
-        $cmids = array_values(array_unique($cmids));
-        if (in_array(0, $cmids, true)) {
-            $cmids = [0];
-        }
-        if (empty($cmids)) {
-            $cmids = [0];
-        }
-        $data->cmids = $cmids;
-        $data->cmid = (int)$cmids[0];
+        // - empty array means no activity selected (personal message only).
+        $data->cmids = local_learningjourney_normalize_cmids_input($data->cmids ?? null);
+        $data->cmid = !empty($data->cmids) ? (int)$data->cmids[0] : 0;
 
         return $data;
     }
