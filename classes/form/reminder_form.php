@@ -143,7 +143,7 @@ class reminder_form extends moodleform {
         if (isset($defaultvalues->cmids) && is_string($defaultvalues->cmids)) {
             $decoded = json_decode($defaultvalues->cmids, true);
             if (is_array($decoded)) {
-                $defaultvalues->cmids = local_learningjourney_normalize_cmids_input($decoded);
+                $defaultvalues->cmids = \local_learningjourney_normalize_cmids_input($decoded);
             }
         } else if (!empty($defaultvalues->cmid) && !isset($defaultvalues->cmids)) {
             $defaultvalues->cmids = [(int)$defaultvalues->cmid];
@@ -174,7 +174,7 @@ class reminder_form extends moodleform {
         // Normalize cmids:
         // - if 0 (all activities) is selected, ignore all other selections.
         // - empty array means no activity selected (personal message only).
-        $data->cmids = local_learningjourney_normalize_cmids_input($data->cmids ?? null);
+        $data->cmids = \local_learningjourney_normalize_cmids_input($data->cmids ?? null);
         $data->cmid = !empty($data->cmids) ? (int)$data->cmids[0] : 0;
 
         return $data;

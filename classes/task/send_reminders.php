@@ -5,6 +5,7 @@ namespace local_learningjourney\task;
 defined('MOODLE_INTERNAL') || die();
 
 global $CFG;
+require_once($CFG->dirroot . '/local/learningjourney/lib.php');
 require_once($CFG->libdir . '/completionlib.php');
 
 use completion_info;
@@ -51,8 +52,8 @@ class send_reminders extends \core\task\scheduled_task {
             return;
         }
 
-        $activitymode = local_learningjourney_get_activity_mode($reminder);
-        $selectedcmids = local_learningjourney_parse_cmids($reminder);
+        $activitymode = \local_learningjourney_get_activity_mode($reminder);
+        $selectedcmids = \local_learningjourney_parse_cmids($reminder);
 
         $cm = null;
         if ($activitymode === 'specific') {

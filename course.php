@@ -1,6 +1,7 @@
 <?php
 
 require('../../config.php');
+require_once($CFG->dirroot . '/local/learningjourney/lib.php');
 require_once($CFG->libdir . '/completionlib.php');
 require_once($CFG->libdir . '/filelib.php');
 
