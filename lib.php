@@ -119,6 +119,136 @@ function local_learningjourney_resolve_managers_by_learner(array $users): array 
 }
 
 /**
+ * Get the direct manager user record for a user (via profile field "manager" username).
+ *
+ * @param int $userid
+ * @return \stdClass|null
+ */
+function local_learningjourney_get_user_direct_manager(int $userid): ?\stdClass {
+    global $DB;
+
+    $managerfield = $DB->get_record('user_info_field', ['shortname' => 'manager'], '*', IGNORE_MISSING);
+    if (!$managerfield) {
+        return null;
+    }
+
+    $record = $DB->get_record('user_info_data', [
+        'fieldid' => $managerfield->id,
+        'userid' => $userid,
+    ], 'data', IGNORE_MISSING);
+
+    if (!$record) {
+        return null;
+    }
+
+    $managerusername = trim((string)$record->data);
+    if ($managerusername === '') {
+        return null;
+    }
+
+    return $DB->get_record('user', [
+        'username' => $managerusername,
+        'deleted' => 0,
+    ], '*', IGNORE_MISSING) ?: null;
+}
+
+/**
+ * Build a map of manager username => enrolled direct reports in a course.
+ *
+ * @param array $enrolledusers Enrolled user records keyed by id.
+ * @return array manager username => array of user records
+ */
+function local_learningjourney_build_direct_reports_by_manager_username(array $enrolledusers): array {
+    global $DB;
+
+    if (empty($enrolledusers)) {
+        return [];
+    }
+
+    $managerfield = $DB->get_record('user_info_field', ['shortname' => 'manager'], '*', IGNORE_MISSING);
+    if (!$managerfield) {
+        return [];
+    }
+
+    $userbyid = [];
+    foreach ($enrolledusers as $user) {
+        $userbyid[$user->id] = $user;
+    }
+
+    $userids = array_keys($userbyid);
+    list($insql, $inparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
+    $params = $inparams + ['fieldid' => $managerfield->id];
+    $records = $DB->get_records_select('user_info_data', "fieldid = :fieldid AND userid {$insql}", $params);
+
+    $byusername = [];
+    foreach ($records as $rec) {
+        $managerusername = trim((string)$rec->data);
+        if ($managerusername === '' || !isset($userbyid[$rec->userid])) {
+            continue;
+        }
+        $byusername[$managerusername][] = $userbyid[$rec->userid];
+    }
+
+    return $byusername;
+}
+
+/**
+ * Build an HTML table of direct employee names for email placeholders.
+ *
+ * @param array $employees User records.
+ * @return string
+ */
+function local_learningjourney_build_direct_employees_table_html(array $employees): string {
+    if (empty($employees)) {
+        return '';
+    }
+
+    $table = new html_table();
+    $table->head = [get_string('fullname')];
+
+    foreach ($employees as $employee) {
+        $table->data[] = new html_table_row([fullname($employee)]);
+    }
+
+    return html_writer::table($table);
+}
+
+/**
+ * Placeholder values for {directmanager} and {directemployees}.
+ *
+ * @param \stdClass $recipient Email recipient.
+ * @param \stdClass $course
+ * @param \context_course $context
+ * @param array|null $directreportsbyusername Optional pre-built map from local_learningjourney_build_direct_reports_by_manager_username().
+ * @return array<string, string>
+ */
+function local_learningjourney_get_direct_manager_replacements(
+    \stdClass $recipient,
+    \stdClass $course,
+    \context_course $context,
+    ?array $directreportsbyusername = null
+): array {
+    $manager = local_learningjourney_get_user_direct_manager((int)$recipient->id);
+    $directmanager = $manager ? fullname($manager) : '';
+
+    if ($directreportsbyusername === null) {
+        $enrolled = get_enrolled_users($context, '', 0, 'u.*');
+        $directreportsbyusername = local_learningjourney_build_direct_reports_by_manager_username($enrolled);
+    }
+
+    $managerusername = trim((string)($recipient->username ?? ''));
+    $employees = ($managerusername !== '') ? ($directreportsbyusername[$managerusername] ?? []) : [];
+    $directemployees = local_learningjourney_build_direct_employees_table_html($employees);
+
+    return [
+        '{directmanager}' => $directmanager,
+        '{directemployees}' => $directemployees,
+        '{{directmanager}}' => $directmanager,
+        '{{directemployees}}' => $directemployees,
+    ];
+}
+
+/**
  * Get unique direct managers of enrolled learners who are not enrolled in the course.
  *
  * @param \stdClass $course

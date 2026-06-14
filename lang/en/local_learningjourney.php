@@ -26,7 +26,7 @@ $string['delete'] = 'Delete';
 $string['remindersaved'] = 'Reminder saved successfully.';
 $string['reminder_help'] = 'Create a reminder for a specific activity in this course. The reminder will be sent by email at the configured time, with a direct link to the activity and the course.';
 $string['placeholdersheading'] = 'Available placeholders';
-$string['placeholdershelp'] = 'You can use these placeholders in the email subject and message: {firstname}, {activityname}, {duedateshortformat}, {modurl}, {modname}. Legacy format is also supported: {{firstname}}, {{activityname}}, {{courseurl}}, etc.';
+$string['placeholdershelp'] = 'You can use these placeholders in the email subject and message: {firstname}, {activityname}, {duedateshortformat}, {modurl}, {modname}, {directmanager}, {directemployees}. Legacy format is also supported: {{firstname}}, {{activityname}}, {{courseurl}}, {{directmanager}}, {{directemployees}}, etc.';
 
 $string['editingreminder'] = 'You are editing an existing reminder.';
 $string['newreminder'] = 'Create new reminder';
