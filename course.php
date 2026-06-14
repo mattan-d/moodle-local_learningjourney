@@ -99,13 +99,21 @@ $previewpopup = optional_param('previewpopup', 0, PARAM_BOOL);
  * @param moodle_url $popupurl
  * @return void
  */
-function local_learningjourney_render_preview_card(string $subject, string $bodyhtml, moodle_url $popupurl): void {
+function local_learningjourney_render_preview_card(
+    string $subject,
+    string $bodyhtml,
+    moodle_url $popupurl,
+    string $recipientshtml = ''
+): void {
     $header = html_writer::div(
         html_writer::tag('strong', get_string('previewheading', 'local_learningjourney')),
         'card-header bg-light'
     );
 
+    $recipientsblock = $recipientshtml !== '' ? html_writer::div($recipientshtml, 'mb-3') : '';
+
     $content = html_writer::div(
+        $recipientsblock .
         html_writer::tag('p',
             html_writer::tag('strong', get_string('previewsubjectlabel', 'local_learningjourney') . ' ') . s($subject)
         ) .
@@ -115,6 +123,38 @@ function local_learningjourney_render_preview_card(string $subject, string $body
     );
 
     echo html_writer::div($header . $content, 'card border-primary mb-4');
+}
+
+/**
+ * Resolve preview recipient user and optional recipients list HTML.
+ *
+ * @param \stdClass $course
+ * @param \context_course $context
+ * @param string $targettype
+ * @param \stdClass $fallbackuser
+ * @return array{recipient: \stdClass, recipientshtml: string}
+ */
+function local_learningjourney_get_preview_context(
+    \stdClass $course,
+    \context_course $context,
+    string $targettype,
+    \stdClass $fallbackuser
+): array {
+    $recipientshtml = '';
+    $recipient = $fallbackuser;
+
+    if ($targettype === 'manager_external') {
+        $recipientshtml = local_learningjourney_render_external_managers_recipients_preview($course, $context);
+        $externalmanagers = local_learningjourney_get_external_managers_for_course($course, $context);
+        if (!empty($externalmanagers)) {
+            $recipient = reset($externalmanagers);
+        }
+    }
+
+    return [
+        'recipient' => $recipient,
+        'recipientshtml' => $recipientshtml,
+    ];
 }
 
 /**
@@ -256,34 +296,7 @@ function local_learningjourney_get_manager_rows_preview(\stdClass $course, ?\cm_
 
     $completion = new completion_info($course);
 
-    // Resolve manager user by custom profile field "manager" (username).
-    $managersbyuser = [];
-    $managerfield = $DB->get_record('user_info_field', ['shortname' => 'manager'], '*', IGNORE_MISSING);
-    if ($managerfield) {
-        $managercache = [];
-        $userids = array_map(static function($u) {
-            return $u->id;
-        }, $users);
-        list($insql, $inparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
-        $params = $inparams + ['fieldid' => $managerfield->id];
-        $records = $DB->get_records_select('user_info_data', "fieldid = :fieldid AND userid {$insql}", $params);
-
-        foreach ($records as $rec) {
-            $managerusername = trim((string)$rec->data);
-            if ($managerusername === '') {
-                continue;
-            }
-            if (!array_key_exists($managerusername, $managercache)) {
-                $managercache[$managerusername] = $DB->get_record('user', [
-                    'username' => $managerusername,
-                    'deleted' => 0,
-                ], '*', IGNORE_MISSING);
-            }
-            if ($managercache[$managerusername]) {
-                $managersbyuser[$rec->userid] = $managercache[$managerusername];
-            }
-        }
-    }
+    $managersbyuser = local_learningjourney_resolve_managers_by_learner($users);
 
     $rowsbymanager = [];
     foreach ($users as $user) {
@@ -520,6 +533,11 @@ if (!$previewpopup && !empty($reminderid)) {
 if ($previewdata) {
     global $USER, $SITE;
 
+    $previewtargettype = $previewdata->targettype ?? 'student';
+    $previewcontext = local_learningjourney_get_preview_context($course, $context, $previewtargettype, $USER);
+    $previewuser = $previewcontext['recipient'];
+    $previewrecipientshtml = $previewcontext['recipientshtml'];
+
     $selectedcmids = local_learningjourney_normalize_cmids_input($previewdata->cmids ?? null);
     $previewmode = empty($selectedcmids) ? 'none' : (in_array(0, $selectedcmids, true) ? 'all' : 'specific');
 
@@ -533,7 +551,7 @@ if ($previewdata) {
             ]);
         $subject = local_learningjourney_replace_placeholders_preview(
             $subject,
-            $USER,
+            $previewuser,
             $course,
             null,
             $courseurl,
@@ -544,7 +562,7 @@ if ($previewdata) {
         $message = $previewdata->message ?? get_string('defaultmessage', 'local_learningjourney');
         $message = local_learningjourney_replace_placeholders_preview(
             $message,
-            $USER,
+            $previewuser,
             $course,
             null,
             $courseurl,
@@ -563,7 +581,7 @@ if ($previewdata) {
             'id' => $course->id,
             'previewpopup' => 1,
         ]);
-        local_learningjourney_render_preview_card($subject, $message, $popupurl);
+        local_learningjourney_render_preview_card($subject, $message, $popupurl, $previewrecipientshtml);
     } else if (count($selectedcmids) === 1 && !empty($selectedcmids[0]) && isset($cms[$selectedcmids[0]])) {
         $cm = $cms[$selectedcmids[0]];
 
@@ -576,10 +594,10 @@ if ($previewdata) {
                 'activity' => format_string($cm->name),
                 'course' => format_string($course->fullname),
             ]);
-        $subject = local_learningjourney_replace_placeholders_preview($subject, $USER, $course, $cm, $activityurl, $courseurl);
+        $subject = local_learningjourney_replace_placeholders_preview($subject, $previewuser, $course, $cm, $activityurl, $courseurl);
 
         $message = $previewdata->message ?? get_string('defaultmessage', 'local_learningjourney');
-        $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, $cm, $activityurl, $courseurl);
+        $message = local_learningjourney_replace_placeholders_preview($message, $previewuser, $course, $cm, $activityurl, $courseurl);
         $message = local_learningjourney_format_message_embeds(
             $message,
             $context,
@@ -588,7 +606,7 @@ if ($previewdata) {
         );
 
         // Manager preview: show the same summary table structure sent by cron.
-        if (($previewdata->targettype ?? 'student') === 'manager') {
+        if ($previewtargettype === 'manager') {
             $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, $cm, $previewdata->completionfilter ?? 'all');
             $managerrows = $rowsbymanager[$USER->id] ?? [];
             if (empty($managerrows) && !empty($rowsbymanager)) {
@@ -618,7 +636,7 @@ if ($previewdata) {
             'id' => $course->id,
             'previewpopup' => 1,
         ]);
-        local_learningjourney_render_preview_card($subject, $message, $popupurl);
+        local_learningjourney_render_preview_card($subject, $message, $popupurl, $previewrecipientshtml);
     } else {
         // Preview for "all activities" or multiple selected activities.
         $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
@@ -628,10 +646,10 @@ if ($previewdata) {
             : get_string('defaultsubject_course', 'local_learningjourney', [
                 'course' => format_string($course->fullname),
             ]);
-        $subject = local_learningjourney_replace_placeholders_preview($subject, $USER, $course, null, $courseurl, $courseurl);
+        $subject = local_learningjourney_replace_placeholders_preview($subject, $previewuser, $course, null, $courseurl, $courseurl);
 
         $message = $previewdata->message ?? get_string('defaultmessage', 'local_learningjourney');
-        $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, null, $courseurl, $courseurl);
+        $message = local_learningjourney_replace_placeholders_preview($message, $previewuser, $course, null, $courseurl, $courseurl);
         $message = local_learningjourney_format_message_embeds(
             $message,
             $context,
@@ -639,7 +657,7 @@ if ($previewdata) {
             0
         );
 
-        if (($previewdata->targettype ?? 'student') === 'manager') {
+        if ($previewtargettype === 'manager') {
             $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, null, $previewdata->completionfilter ?? 'all');
             $managerrows = $rowsbymanager[$USER->id] ?? [];
             if (empty($managerrows) && !empty($rowsbymanager)) {
@@ -660,7 +678,7 @@ if ($previewdata) {
             if (!empty($table->data)) {
                 $message .= html_writer::table($table);
             }
-        } else {
+        } else if ($previewtargettype === 'student') {
             // Student preview for all activities or multiple: activity statuses + course progress.
             $completion = new completion_info($course);
             $modinfo = get_fast_modinfo($course);
@@ -725,7 +743,7 @@ if ($previewdata) {
             'id' => $course->id,
             'previewpopup' => 1,
         ]);
-        local_learningjourney_render_preview_card($subject, $message, $popupurl);
+        local_learningjourney_render_preview_card($subject, $message, $popupurl, $previewrecipientshtml);
     }
 }
 
@@ -735,6 +753,10 @@ if ($previewexistingid && !$previewdata) {
 
     $reminder = $DB->get_record('local_learningjourney', ['id' => $previewexistingid, 'courseid' => $course->id], '*', IGNORE_MISSING);
     if ($reminder) {
+        $existingtargettype = $reminder->targettype ?? 'student';
+        $existingpreviewcontext = local_learningjourney_get_preview_context($course, $context, $existingtargettype, $USER);
+        $existingpreviewuser = $existingpreviewcontext['recipient'];
+        $existingrecipientshtml = $existingpreviewcontext['recipientshtml'];
         $existingmode = local_learningjourney_get_activity_mode($reminder);
 
         if ($existingmode === 'none') {
@@ -747,7 +769,7 @@ if ($previewexistingid && !$previewdata) {
                 ]);
             $subject = local_learningjourney_replace_placeholders_preview(
                 $subject,
-                $USER,
+                $existingpreviewuser,
                 $course,
                 null,
                 $courseurl,
@@ -758,7 +780,7 @@ if ($previewexistingid && !$previewdata) {
             $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
             $message = local_learningjourney_replace_placeholders_preview(
                 $message,
-                $USER,
+                $existingpreviewuser,
                 $course,
                 null,
                 $courseurl,
@@ -773,7 +795,7 @@ if ($previewexistingid && !$previewdata) {
                 'previewid' => $reminder->id,
                 'previewpopup' => 1,
             ]);
-            local_learningjourney_render_preview_card($subject, $message, $popupurl);
+            local_learningjourney_render_preview_card($subject, $message, $popupurl, $existingrecipientshtml);
         } else if ($existingmode === 'specific' && !empty($reminder->cmid) && isset($cms[$reminder->cmid])) {
             $cm = $cms[$reminder->cmid];
 
@@ -786,13 +808,13 @@ if ($previewexistingid && !$previewdata) {
                     'activity' => format_string($cm->name),
                     'course' => format_string($course->fullname),
                 ]);
-            $subject = local_learningjourney_replace_placeholders_preview($subject, $USER, $course, $cm, $activityurl, $courseurl);
+            $subject = local_learningjourney_replace_placeholders_preview($subject, $existingpreviewuser, $course, $cm, $activityurl, $courseurl);
 
             $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
-            $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, $cm, $activityurl, $courseurl);
+            $message = local_learningjourney_replace_placeholders_preview($message, $existingpreviewuser, $course, $cm, $activityurl, $courseurl);
             $message = local_learningjourney_format_message_embeds($message, $context, 0, (int)$reminder->id);
 
-            if (($reminder->targettype ?? 'student') === 'manager') {
+            if ($existingtargettype === 'manager') {
                 $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, $cm, $reminder->completionfilter ?? 'all');
                 $managerrows = $rowsbymanager[$USER->id] ?? [];
                 if (empty($managerrows) && !empty($rowsbymanager)) {
@@ -823,7 +845,7 @@ if ($previewexistingid && !$previewdata) {
                 'previewid' => $reminder->id,
                 'previewpopup' => 1,
             ]);
-            local_learningjourney_render_preview_card($subject, $message, $popupurl);
+            local_learningjourney_render_preview_card($subject, $message, $popupurl, $existingrecipientshtml);
         } else {
             // Existing reminder preview for "all activities".
             $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
@@ -833,13 +855,13 @@ if ($previewexistingid && !$previewdata) {
                 : get_string('defaultsubject_course', 'local_learningjourney', [
                     'course' => format_string($course->fullname),
                 ]);
-            $subject = local_learningjourney_replace_placeholders_preview($subject, $USER, $course, null, $courseurl, $courseurl);
+            $subject = local_learningjourney_replace_placeholders_preview($subject, $existingpreviewuser, $course, null, $courseurl, $courseurl);
 
             $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
-            $message = local_learningjourney_replace_placeholders_preview($message, $USER, $course, null, $courseurl, $courseurl);
+            $message = local_learningjourney_replace_placeholders_preview($message, $existingpreviewuser, $course, null, $courseurl, $courseurl);
             $message = local_learningjourney_format_message_embeds($message, $context, 0, (int)$reminder->id);
 
-            if (($reminder->targettype ?? 'student') === 'manager') {
+            if ($existingtargettype === 'manager') {
                 $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, null, $reminder->completionfilter ?? 'all');
                 $managerrows = $rowsbymanager[$USER->id] ?? [];
                 if (empty($managerrows) && !empty($rowsbymanager)) {
@@ -858,7 +880,7 @@ if ($previewexistingid && !$previewdata) {
                 if (!empty($table->data)) {
                     $message .= html_writer::table($table);
                 }
-            } else {
+            } else if ($existingtargettype === 'student') {
                 // Student preview for all activities.
                 $completion = new completion_info($course);
                 $modinfo = get_fast_modinfo($course);
@@ -918,7 +940,7 @@ if ($previewexistingid && !$previewdata) {
                 'previewid' => $reminder->id,
                 'previewpopup' => 1,
             ]);
-            local_learningjourney_render_preview_card($subject, $message, $popupurl);
+            local_learningjourney_render_preview_card($subject, $message, $popupurl, $existingrecipientshtml);
         }
     }
 }
@@ -947,9 +969,7 @@ if (!empty($reminders)) {
     foreach ($reminders as $reminder) {
         $activityname = local_learningjourney_format_reminder_activity_label($reminder, $modoptions);
 
-        $target = (!empty($reminder->targettype) && $reminder->targettype === 'manager')
-            ? get_string('target_manager', 'local_learningjourney')
-            : get_string('target_student', 'local_learningjourney');
+        $target = local_learningjourney_get_targettype_label($reminder->targettype ?? 'student');
 
         $filterstr = get_string('filter_' . $reminder->completionfilter, 'local_learningjourney');
 

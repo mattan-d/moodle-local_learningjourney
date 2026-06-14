@@ -85,38 +85,12 @@ class send_reminders extends \core\task\scheduled_task {
         $managerrows = [];
         $managersbyuser = [];
 
-        $sendtomanagers = !empty($reminder->targettype) && $reminder->targettype === 'manager';
+        $targettype = $reminder->targettype ?? 'student';
+        $sendtomanagers = $targettype === 'manager';
+        $sendtoexternalmanagers = $targettype === 'manager_external';
 
-        if ($sendtomanagers) {
-            // Prepare manager mapping based on custom profile field 'manager' (username).
-            $managerusercache = [];
-
-            $managerfield = $DB->get_record('user_info_field', ['shortname' => 'manager'], '*', IGNORE_MISSING);
-            if ($managerfield) {
-                $userids = array_map(static function($u) {
-                    return $u->id;
-                }, $users);
-
-                list($insql, $inparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
-                $params = $inparams + ['fieldid' => $managerfield->id];
-                $records = $DB->get_records_select('user_info_data', "fieldid = :fieldid AND userid {$insql}", $params);
-
-                foreach ($records as $rec) {
-                    $managerusername = trim((string)$rec->data);
-                    if ($managerusername === '') {
-                        continue;
-                    }
-                    if (!array_key_exists($managerusername, $managerusercache)) {
-                        $managerusercache[$managerusername] = $DB->get_record('user', [
-                            'username' => $managerusername,
-                            'deleted' => 0,
-                        ], '*', IGNORE_MISSING);
-                    }
-                    if ($managerusercache[$managerusername]) {
-                        $managersbyuser[$rec->userid] = $managerusercache[$managerusername];
-                    }
-                }
-            }
+        if ($sendtomanagers || $sendtoexternalmanagers) {
+            $managersbyuser = \local_learningjourney_resolve_managers_by_learner($users);
         }
 
         $sentcount = 0;
@@ -132,7 +106,7 @@ class send_reminders extends \core\task\scheduled_task {
                 $iscomplete = null;
             }
 
-            if (empty($reminder->targettype) || $reminder->targettype === 'student') {
+            if ($targettype === 'student') {
                 // Send to student.
                 $rawsubject = $reminder->subject ?: $this->get_default_subject($course, $cm, $activitymode);
                 $subject = $this->replace_placeholders($rawsubject, $user, $course, $cm, $activityurl, $courseurl, $activitymode);
@@ -182,6 +156,39 @@ class send_reminders extends \core\task\scheduled_task {
                     'complete' => (bool)$iscomplete,
                     'progress' => $progresspercent,
                 ];
+            }
+        }
+
+        // Send personal message to external managers (not enrolled in the course).
+        if ($sendtoexternalmanagers) {
+            $externalmanagers = \local_learningjourney_get_external_managers($course, $context, $users);
+            foreach ($externalmanagers as $manager) {
+                $rawsubject = $reminder->subject ?: $this->get_default_subject($course, $cm, $activitymode);
+                $subject = $this->replace_placeholders($rawsubject, $manager, $course, $cm, $activityurl, $courseurl, $activitymode);
+
+                $messagehtml = $this->render_message(
+                    $reminder->message,
+                    $manager,
+                    $course,
+                    $cm,
+                    $activityurl,
+                    $courseurl,
+                    $context,
+                    (int)$reminder->id,
+                    $activitymode
+                );
+
+                $messagehtml = $this->wrap_email_html($subject, $messagehtml);
+                $messagetext = html_to_text($messagehtml);
+
+                email_to_user(
+                    $manager,
+                    get_admin(),
+                    $subject,
+                    $messagetext,
+                    $messagehtml
+                );
+                $sentcount++;
             }
         }
 

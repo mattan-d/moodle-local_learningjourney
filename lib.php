@@ -72,11 +72,141 @@ function local_learningjourney_pluginfile($course, $cm, $context, $filearea, $ar
 }
 
 /**
- * Extend course settings navigation to add Learning Journey link.
+ * Resolve direct managers for a set of learners via custom profile field "manager" (username).
  *
- * @param settings_navigation $settingsnav
- * @param context $context
+ * @param array $users Enrolled learner user records keyed by id.
+ * @return array userid => manager user record
  */
+function local_learningjourney_resolve_managers_by_learner(array $users): array {
+    global $DB;
+
+    $managersbyuser = [];
+    if (empty($users)) {
+        return $managersbyuser;
+    }
+
+    $managerfield = $DB->get_record('user_info_field', ['shortname' => 'manager'], '*', IGNORE_MISSING);
+    if (!$managerfield) {
+        return $managersbyuser;
+    }
+
+    $userids = array_map(static function($user) {
+        return $user->id;
+    }, $users);
+
+    list($insql, $inparams) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
+    $params = $inparams + ['fieldid' => $managerfield->id];
+    $records = $DB->get_records_select('user_info_data', "fieldid = :fieldid AND userid {$insql}", $params);
+
+    $managercache = [];
+    foreach ($records as $rec) {
+        $managerusername = trim((string)$rec->data);
+        if ($managerusername === '') {
+            continue;
+        }
+        if (!array_key_exists($managerusername, $managercache)) {
+            $managercache[$managerusername] = $DB->get_record('user', [
+                'username' => $managerusername,
+                'deleted' => 0,
+            ], '*', IGNORE_MISSING);
+        }
+        if ($managercache[$managerusername]) {
+            $managersbyuser[$rec->userid] = $managercache[$managerusername];
+        }
+    }
+
+    return $managersbyuser;
+}
+
+/**
+ * Get unique direct managers of enrolled learners who are not enrolled in the course.
+ *
+ * @param \stdClass $course
+ * @param \context_course $context
+ * @param array $users Enrolled learner user records keyed by id.
+ * @return array managerid => manager user record
+ */
+function local_learningjourney_get_external_managers(\stdClass $course, \context_course $context, array $users): array {
+    $managersbyuser = local_learningjourney_resolve_managers_by_learner($users);
+    if (empty($managersbyuser)) {
+        return [];
+    }
+
+    $enrolledids = [];
+    foreach ($users as $user) {
+        $enrolledids[$user->id] = true;
+    }
+
+    $external = [];
+    foreach ($managersbyuser as $manager) {
+        if (isset($enrolledids[$manager->id])) {
+            continue;
+        }
+        $external[$manager->id] = $manager;
+    }
+
+    return $external;
+}
+
+/**
+ * Get external managers for all learners enrolled in a course.
+ *
+ * @param \stdClass $course
+ * @param \context_course $context
+ * @return array managerid => manager user record
+ */
+function local_learningjourney_get_external_managers_for_course(\stdClass $course, \context_course $context): array {
+    $users = get_enrolled_users($context, '', 0, 'u.*');
+    return local_learningjourney_get_external_managers($course, $context, $users);
+}
+
+/**
+ * Human-readable label for reminder target type.
+ *
+ * @param string $targettype
+ * @return string
+ */
+function local_learningjourney_get_targettype_label(string $targettype): string {
+    switch ($targettype) {
+        case 'manager':
+            return get_string('target_manager', 'local_learningjourney');
+        case 'manager_external':
+            return get_string('target_manager_external', 'local_learningjourney');
+        default:
+            return get_string('target_student', 'local_learningjourney');
+    }
+}
+
+/**
+ * Build HTML list of external managers who will receive the reminder.
+ *
+ * @param \stdClass $course
+ * @param \context_course $context
+ * @return string
+ */
+function local_learningjourney_render_external_managers_recipients_preview(\stdClass $course, \context_course $context): string {
+    $managers = local_learningjourney_get_external_managers_for_course($course, $context);
+
+    if (empty($managers)) {
+        return html_writer::div(
+            get_string('preview_norecipients_external', 'local_learningjourney'),
+            'alert alert-warning mb-3'
+        );
+    }
+
+    $items = [];
+    foreach ($managers as $manager) {
+        $label = fullname($manager);
+        if (!empty($manager->email)) {
+            $label .= ' (' . s($manager->email) . ')';
+        }
+        $items[] = html_writer::tag('li', $label);
+    }
+
+    return html_writer::tag('h4', get_string('previewrecipientsheading', 'local_learningjourney')) .
+        html_writer::tag('ul', implode('', $items), ['class' => 'mb-3']);
+}
+
 /**
  * Normalize activity ids submitted from the reminder form.
  *
