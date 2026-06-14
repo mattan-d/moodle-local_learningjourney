@@ -82,7 +82,7 @@ class send_reminders extends \core\task\scheduled_task {
             $activityurl = $courseurl;
         }
 
-        $directreportsbyid = \local_learningjourney_build_direct_reports_by_manager_id($users);
+        $directreportsbyusername = \local_learningjourney_build_direct_reports_by_manager_username($users);
 
         $managerrows = [];
         $managersbyuser = [];
@@ -111,7 +111,7 @@ class send_reminders extends \core\task\scheduled_task {
             if ($targettype === 'student') {
                 // Send to student.
                 $rawsubject = $reminder->subject ?: $this->get_default_subject($course, $cm, $activitymode);
-                $subject = $this->replace_placeholders($rawsubject, $user, $course, $cm, $activityurl, $courseurl, $activitymode, $context, $directreportsbyid);
+                $subject = $this->replace_placeholders($rawsubject, $user, $course, $cm, $activityurl, $courseurl, $activitymode, $context, $directreportsbyusername, $targettype);
 
                 $messagehtml = $this->render_message(
                     $reminder->message,
@@ -123,7 +123,8 @@ class send_reminders extends \core\task\scheduled_task {
                     $context,
                     (int)$reminder->id,
                     $activitymode,
-                    $directreportsbyid
+                    $directreportsbyusername,
+                    $targettype
                 );
 
                 if ($activitymode === 'all') {
@@ -167,7 +168,7 @@ class send_reminders extends \core\task\scheduled_task {
             $externalmanagers = \local_learningjourney_get_external_managers($course, $context, $users);
             foreach ($externalmanagers as $manager) {
                 $rawsubject = $reminder->subject ?: $this->get_default_subject($course, $cm, $activitymode);
-                $subject = $this->replace_placeholders($rawsubject, $manager, $course, $cm, $activityurl, $courseurl, $activitymode, $context, $directreportsbyid);
+                $subject = $this->replace_placeholders($rawsubject, $manager, $course, $cm, $activityurl, $courseurl, $activitymode, $context, $directreportsbyusername, 'manager_external');
 
                 $messagehtml = $this->render_message(
                     $reminder->message,
@@ -179,7 +180,8 @@ class send_reminders extends \core\task\scheduled_task {
                     $context,
                     (int)$reminder->id,
                     $activitymode,
-                    $directreportsbyid
+                    $directreportsbyusername,
+                    'manager_external'
                 );
 
                 $messagehtml = $this->wrap_email_html($subject, $messagehtml);
@@ -207,7 +209,7 @@ class send_reminders extends \core\task\scheduled_task {
                 $courseurl,
                 $context,
                 $activitymode,
-                $directreportsbyid
+                $directreportsbyusername
             );
         }
 
@@ -269,7 +271,8 @@ class send_reminders extends \core\task\scheduled_task {
         \context_course $context,
         int $reminderid,
         string $activitymode = 'specific',
-        ?array $directreportsbyid = null
+        ?array $directreportsbyusername = null,
+        string $targettype = 'student'
     ): string {
         $message = $rawmessage ?? get_string('defaultmessage', 'local_learningjourney');
         $message = $this->replace_placeholders(
@@ -281,7 +284,8 @@ class send_reminders extends \core\task\scheduled_task {
             $courseurl,
             $activitymode,
             $context,
-            $directreportsbyid
+            $directreportsbyusername,
+            $targettype
         );
 
         // Use per-recipient token URLs so embedded images load in email clients without a Moodle login.
@@ -350,7 +354,7 @@ class send_reminders extends \core\task\scheduled_task {
         moodle_url $courseurl,
         \context_course $context,
         string $activitymode = 'specific',
-        ?array $directreportsbyid = null
+        ?array $directreportsbyusername = null
     ): int {
         global $DB;
 
@@ -372,7 +376,8 @@ class send_reminders extends \core\task\scheduled_task {
                 $courseurl,
                 $activitymode,
                 $context,
-                $directreportsbyid
+                $directreportsbyusername,
+                'manager'
             );
 
             $message = $reminder->message ?: get_string('defaultmanagermessage', 'local_learningjourney');
@@ -385,7 +390,8 @@ class send_reminders extends \core\task\scheduled_task {
                 $courseurl,
                 $activitymode,
                 $context,
-                $directreportsbyid
+                $directreportsbyusername,
+                'manager'
             );
             $message = $this->rewrite_message_files_for_email(
                 $message,
@@ -629,7 +635,7 @@ class send_reminders extends \core\task\scheduled_task {
      * @param moodle_url $courseurl
      * @param string $activitymode
      * @param \context_course $context
-     * @param array|null $directreportsbyid
+     * @param array|null $directreportsbyusername
      * @return string
      */
     protected function replace_placeholders(
@@ -641,7 +647,8 @@ class send_reminders extends \core\task\scheduled_task {
         moodle_url $courseurl,
         string $activitymode = 'specific',
         \context_course $context = null,
-        ?array $directreportsbyid = null
+        ?array $directreportsbyusername = null,
+        string $targettype = 'student'
     ): string {
         global $CFG;
 
@@ -683,7 +690,7 @@ class send_reminders extends \core\task\scheduled_task {
         if ($context) {
             $replacements = array_merge(
                 $replacements,
-                \local_learningjourney_get_direct_manager_replacements($user, $course, $context, $directreportsbyid)
+                \local_learningjourney_get_direct_manager_replacements($user, $course, $context, $directreportsbyusername, $targettype)
             );
         }
 

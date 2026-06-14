@@ -26,7 +26,8 @@ function local_learningjourney_replace_placeholders_preview(
     moodle_url $activityurl,
     moodle_url $courseurl,
     string $activitymode = 'specific',
-    ?\context_course $context = null
+    ?\context_course $context = null,
+    string $targettype = 'student'
 ): string {
     global $CFG, $DB;
 
@@ -90,7 +91,7 @@ function local_learningjourney_replace_placeholders_preview(
     if ($context) {
         $replacements = array_merge(
             $replacements,
-            local_learningjourney_get_direct_manager_replacements($user, $course, $context)
+            local_learningjourney_get_direct_manager_replacements($user, $course, $context, null, $targettype)
         );
     }
 
@@ -565,7 +566,8 @@ if ($previewdata) {
             $courseurl,
             $courseurl,
             'none',
-            $context
+            $context,
+            $previewtargettype
         );
 
         $message = $previewdata->message ?? get_string('defaultmessage', 'local_learningjourney');
@@ -577,7 +579,8 @@ if ($previewdata) {
             $courseurl,
             $courseurl,
             'none',
-            $context
+            $context,
+            $previewtargettype
         );
         $message = local_learningjourney_format_message_embeds(
             $message,
@@ -604,10 +607,10 @@ if ($previewdata) {
                 'activity' => format_string($cm->name),
                 'course' => format_string($course->fullname),
             ]);
-        $subject = local_learningjourney_replace_placeholders_preview($subject, $previewuser, $course, $cm, $activityurl, $courseurl, 'specific', $context);
+        $subject = local_learningjourney_replace_placeholders_preview($subject, $previewuser, $course, $cm, $activityurl, $courseurl, 'specific', $context, $previewtargettype);
 
         $message = $previewdata->message ?? get_string('defaultmessage', 'local_learningjourney');
-        $message = local_learningjourney_replace_placeholders_preview($message, $previewuser, $course, $cm, $activityurl, $courseurl, 'specific', $context);
+        $message = local_learningjourney_replace_placeholders_preview($message, $previewuser, $course, $cm, $activityurl, $courseurl, 'specific', $context, $previewtargettype);
         $message = local_learningjourney_format_message_embeds(
             $message,
             $context,
@@ -656,10 +659,10 @@ if ($previewdata) {
             : get_string('defaultsubject_course', 'local_learningjourney', [
                 'course' => format_string($course->fullname),
             ]);
-        $subject = local_learningjourney_replace_placeholders_preview($subject, $previewuser, $course, null, $courseurl, $courseurl, 'specific', $context);
+        $subject = local_learningjourney_replace_placeholders_preview($subject, $previewuser, $course, null, $courseurl, $courseurl, 'specific', $context, $previewtargettype);
 
         $message = $previewdata->message ?? get_string('defaultmessage', 'local_learningjourney');
-        $message = local_learningjourney_replace_placeholders_preview($message, $previewuser, $course, null, $courseurl, $courseurl, 'specific', $context);
+        $message = local_learningjourney_replace_placeholders_preview($message, $previewuser, $course, null, $courseurl, $courseurl, 'specific', $context, $previewtargettype);
         $message = local_learningjourney_format_message_embeds(
             $message,
             $context,
@@ -785,7 +788,8 @@ if ($previewexistingid && !$previewdata) {
                 $courseurl,
                 $courseurl,
                 'none',
-                $context
+                $context,
+                $existingtargettype
             );
 
             $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
@@ -797,7 +801,8 @@ if ($previewexistingid && !$previewdata) {
                 $courseurl,
                 $courseurl,
                 'none',
-                $context
+                $context,
+                $existingtargettype
             );
             $message = local_learningjourney_format_message_embeds($message, $context, 0, (int)$reminder->id);
             $message = local_learningjourney_wrap_email_html_preview($subject, $message);
@@ -820,10 +825,10 @@ if ($previewexistingid && !$previewdata) {
                     'activity' => format_string($cm->name),
                     'course' => format_string($course->fullname),
                 ]);
-            $subject = local_learningjourney_replace_placeholders_preview($subject, $existingpreviewuser, $course, $cm, $activityurl, $courseurl, 'specific', $context);
+            $subject = local_learningjourney_replace_placeholders_preview($subject, $existingpreviewuser, $course, $cm, $activityurl, $courseurl, 'specific', $context, $existingtargettype);
 
             $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
-            $message = local_learningjourney_replace_placeholders_preview($message, $existingpreviewuser, $course, $cm, $activityurl, $courseurl, 'specific', $context);
+            $message = local_learningjourney_replace_placeholders_preview($message, $existingpreviewuser, $course, $cm, $activityurl, $courseurl, 'specific', $context, $existingtargettype);
             $message = local_learningjourney_format_message_embeds($message, $context, 0, (int)$reminder->id);
 
             if ($existingtargettype === 'manager') {
@@ -867,10 +872,10 @@ if ($previewexistingid && !$previewdata) {
                 : get_string('defaultsubject_course', 'local_learningjourney', [
                     'course' => format_string($course->fullname),
                 ]);
-            $subject = local_learningjourney_replace_placeholders_preview($subject, $existingpreviewuser, $course, null, $courseurl, $courseurl, 'specific', $context);
+            $subject = local_learningjourney_replace_placeholders_preview($subject, $existingpreviewuser, $course, null, $courseurl, $courseurl, 'specific', $context, $existingtargettype);
 
             $message = $reminder->message ?? get_string('defaultmessage', 'local_learningjourney');
-            $message = local_learningjourney_replace_placeholders_preview($message, $existingpreviewuser, $course, null, $courseurl, $courseurl, 'specific', $context);
+            $message = local_learningjourney_replace_placeholders_preview($message, $existingpreviewuser, $course, null, $courseurl, $courseurl, 'specific', $context, $existingtargettype);
             $message = local_learningjourney_format_message_embeds($message, $context, 0, (int)$reminder->id);
 
             if ($existingtargettype === 'manager') {

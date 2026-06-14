@@ -72,126 +72,6 @@ function local_learningjourney_pluginfile($course, $cm, $context, $filearea, $ar
 }
 
 /**
- * Get the custom profile field "manager" definition.
- *
- * @return \stdClass|null
- */
-function local_learningjourney_get_manager_profile_field(): ?\stdClass {
-    global $DB;
-
-    static $field = null;
-    static $loaded = false;
-
-    if (!$loaded) {
-        $field = $DB->get_record('user_info_field', ['shortname' => 'manager'], '*', IGNORE_MISSING) ?: null;
-        $loaded = true;
-    }
-
-    return $field;
-}
-
-/**
- * Read the raw manager profile value for a user (expected to be a manager username).
- *
- * @param int $userid
- * @return string
- */
-function local_learningjourney_get_manager_profile_value(int $userid): string {
-    global $DB;
-
-    $managerfield = local_learningjourney_get_manager_profile_field();
-    if (!$managerfield) {
-        return '';
-    }
-
-    $record = $DB->get_record('user_info_data', [
-        'fieldid' => $managerfield->id,
-        'userid' => $userid,
-    ], 'data', IGNORE_MISSING);
-
-    if (!$record) {
-        return '';
-    }
-
-    return trim((string)$record->data);
-}
-
-/**
- * Resolve a Moodle user from the value stored in the manager profile field.
- *
- * The field is expected to contain the direct manager's username, but we also tolerate
- * DOMAIN\\username prefixes and case differences.
- *
- * @param string $value Raw profile field value.
- * @return \stdClass|null
- */
-function local_learningjourney_resolve_user_by_manager_profile_value(string $value): ?\stdClass {
-    global $DB, $CFG;
-
-    $value = trim($value);
-    if ($value === '') {
-        return null;
-    }
-
-    if (strpos($value, '\\') !== false) {
-        $parts = explode('\\', $value);
-        $value = trim((string)end($parts));
-    }
-
-    if ($value === '') {
-        return null;
-    }
-
-    $mnethostid = $CFG->mnet_localhost_id;
-
-    $user = $DB->get_record('user', [
-        'username' => $value,
-        'deleted' => 0,
-        'mnethostid' => $mnethostid,
-    ], '*', IGNORE_MISSING);
-    if ($user) {
-        return $user;
-    }
-
-    $users = $DB->get_records_select(
-        'user',
-        'deleted = 0 AND mnethostid = :mnethostid AND ' . $DB->sql_compare_text('username') . ' = ' . $DB->sql_compare_text(':username'),
-        ['mnethostid' => $mnethostid, 'username' => $value]
-    );
-    if (!empty($users)) {
-        return reset($users);
-    }
-
-    return null;
-}
-
-/**
- * Get the direct manager user record for a user via profile field "manager".
- *
- * @param int $userid Employee user id.
- * @return \stdClass|null
- */
-function local_learningjourney_get_user_direct_manager(int $userid): ?\stdClass {
-    $value = local_learningjourney_get_manager_profile_value($userid);
-    if ($value === '') {
-        return null;
-    }
-
-    return local_learningjourney_resolve_user_by_manager_profile_value($value);
-}
-
-/**
- * Get the display name of an employee's direct manager.
- *
- * @param int $userid Employee user id.
- * @return string
- */
-function local_learningjourney_get_direct_manager_display_name(int $userid): string {
-    $manager = local_learningjourney_get_user_direct_manager($userid);
-    return $manager ? fullname($manager) : '';
-}
-
-/**
  * Resolve direct managers for a set of learners via custom profile field "manager" (username).
  *
  * @param array $users Enrolled learner user records keyed by id.
@@ -205,7 +85,7 @@ function local_learningjourney_resolve_managers_by_learner(array $users): array 
         return $managersbyuser;
     }
 
-    $managerfield = local_learningjourney_get_manager_profile_field();
+    $managerfield = $DB->get_record('user_info_field', ['shortname' => 'manager'], '*', IGNORE_MISSING);
     if (!$managerfield) {
         return $managersbyuser;
     }
@@ -218,10 +98,20 @@ function local_learningjourney_resolve_managers_by_learner(array $users): array 
     $params = $inparams + ['fieldid' => $managerfield->id];
     $records = $DB->get_records_select('user_info_data', "fieldid = :fieldid AND userid {$insql}", $params);
 
+    $managercache = [];
     foreach ($records as $rec) {
-        $manager = local_learningjourney_resolve_user_by_manager_profile_value((string)$rec->data);
-        if ($manager) {
-            $managersbyuser[$rec->userid] = $manager;
+        $managerusername = trim((string)$rec->data);
+        if ($managerusername === '') {
+            continue;
+        }
+        if (!array_key_exists($managerusername, $managercache)) {
+            $managercache[$managerusername] = $DB->get_record('user', [
+                'username' => $managerusername,
+                'deleted' => 0,
+            ], '*', IGNORE_MISSING);
+        }
+        if ($managercache[$managerusername]) {
+            $managersbyuser[$rec->userid] = $managercache[$managerusername];
         }
     }
 
@@ -229,19 +119,53 @@ function local_learningjourney_resolve_managers_by_learner(array $users): array 
 }
 
 /**
- * Build a map of manager user id => enrolled direct reports in a course.
+ * Get the direct manager user record for a user (via profile field "manager" username).
+ *
+ * @param int $userid
+ * @return \stdClass|null
+ */
+function local_learningjourney_get_user_direct_manager(int $userid): ?\stdClass {
+    global $DB;
+
+    $managerfield = $DB->get_record('user_info_field', ['shortname' => 'manager'], '*', IGNORE_MISSING);
+    if (!$managerfield) {
+        return null;
+    }
+
+    $record = $DB->get_record('user_info_data', [
+        'fieldid' => $managerfield->id,
+        'userid' => $userid,
+    ], 'data', IGNORE_MISSING);
+
+    if (!$record) {
+        return null;
+    }
+
+    $managerusername = trim((string)$record->data);
+    if ($managerusername === '') {
+        return null;
+    }
+
+    return $DB->get_record('user', [
+        'username' => $managerusername,
+        'deleted' => 0,
+    ], '*', IGNORE_MISSING) ?: null;
+}
+
+/**
+ * Build a map of manager username => enrolled direct reports in a course.
  *
  * @param array $enrolledusers Enrolled user records keyed by id.
- * @return array manager id => array of user records
+ * @return array manager username => array of user records
  */
-function local_learningjourney_build_direct_reports_by_manager_id(array $enrolledusers): array {
+function local_learningjourney_build_direct_reports_by_manager_username(array $enrolledusers): array {
     global $DB;
 
     if (empty($enrolledusers)) {
         return [];
     }
 
-    $managerfield = local_learningjourney_get_manager_profile_field();
+    $managerfield = $DB->get_record('user_info_field', ['shortname' => 'manager'], '*', IGNORE_MISSING);
     if (!$managerfield) {
         return [];
     }
@@ -256,28 +180,16 @@ function local_learningjourney_build_direct_reports_by_manager_id(array $enrolle
     $params = $inparams + ['fieldid' => $managerfield->id];
     $records = $DB->get_records_select('user_info_data', "fieldid = :fieldid AND userid {$insql}", $params);
 
-    $byid = [];
+    $byusername = [];
     foreach ($records as $rec) {
-        if (!isset($userbyid[$rec->userid])) {
+        $managerusername = trim((string)$rec->data);
+        if ($managerusername === '' || !isset($userbyid[$rec->userid])) {
             continue;
         }
-        $manager = local_learningjourney_resolve_user_by_manager_profile_value((string)$rec->data);
-        if (!$manager) {
-            continue;
-        }
-        $byid[$manager->id][] = $userbyid[$rec->userid];
+        $byusername[$managerusername][] = $userbyid[$rec->userid];
     }
 
-    return $byid;
-}
-
-/**
- * @deprecated Use local_learningjourney_build_direct_reports_by_manager_id().
- * @param array $enrolledusers
- * @return array
- */
-function local_learningjourney_build_direct_reports_by_manager_username(array $enrolledusers): array {
-    return local_learningjourney_build_direct_reports_by_manager_id($enrolledusers);
+    return $byusername;
 }
 
 /**
@@ -307,25 +219,33 @@ function local_learningjourney_build_direct_employees_table_html(array $employee
  * @param \stdClass $recipient Email recipient.
  * @param \stdClass $course
  * @param \context_course $context
- * @param array|null $directreportsbyid Optional pre-built map from local_learningjourney_build_direct_reports_by_manager_id().
+ * @param array|null $directreportsbyusername Optional pre-built map from local_learningjourney_build_direct_reports_by_manager_username().
+ * @param string $targettype Reminder target type (student, manager, manager_external).
  * @return array<string, string>
  */
 function local_learningjourney_get_direct_manager_replacements(
     \stdClass $recipient,
     \stdClass $course,
     \context_course $context,
-    ?array $directreportsbyid = null
+    ?array $directreportsbyusername = null,
+    string $targettype = 'student'
 ): array {
-    // Relative to the email recipient as the employee: read their "manager" profile field (username)
-    // and resolve the manager user's full name.
-    $directmanager = local_learningjourney_get_direct_manager_display_name((int)$recipient->id);
-
-    if ($directreportsbyid === null) {
+    if ($directreportsbyusername === null) {
         $enrolled = get_enrolled_users($context, '', 0, 'u.*');
-        $directreportsbyid = local_learningjourney_build_direct_reports_by_manager_id($enrolled);
+        $directreportsbyusername = local_learningjourney_build_direct_reports_by_manager_username($enrolled);
     }
 
-    $employees = $directreportsbyid[(int)$recipient->id] ?? [];
+    $managerusername = trim((string)($recipient->username ?? ''));
+    $employees = ($managerusername !== '') ? ($directreportsbyusername[$managerusername] ?? []) : [];
+
+    // External managers receive mail as the employee's direct manager — use their own name.
+    if ($targettype === 'manager_external') {
+        $directmanager = fullname($recipient);
+    } else {
+        $manager = local_learningjourney_get_user_direct_manager((int)$recipient->id);
+        $directmanager = $manager ? fullname($manager) : '';
+    }
+
     $directemployees = local_learningjourney_build_direct_employees_table_html($employees);
 
     return [
