@@ -119,7 +119,7 @@ function local_learningjourney_render_preview_card(
         'card-header bg-light'
     );
 
-    $recipientsblock = $recipientshtml !== '' ? html_writer::div($recipientshtml, 'mb-3') : '';
+    $recipientsblock = html_writer::div($recipientshtml, 'mb-3');
 
     $content = html_writer::div(
         $recipientsblock .
@@ -135,29 +135,57 @@ function local_learningjourney_render_preview_card(
 }
 
 /**
- * Resolve preview recipient user and optional recipients list HTML.
+ * Resolve the activity module used for completion filtering in preview/send.
+ *
+ * @param string $activitymode One of: none, all, specific.
+ * @param int[] $selectedcmids
+ * @param array $cms Course modules keyed by cmid.
+ * @return \cm_info|null
+ */
+function local_learningjourney_resolve_preview_cm(string $activitymode, array $selectedcmids, array $cms): ?\cm_info {
+    if ($activitymode !== 'specific') {
+        return null;
+    }
+
+    $cmid = (int)($selectedcmids[0] ?? 0);
+    if ($cmid > 0 && isset($cms[$cmid])) {
+        return $cms[$cmid];
+    }
+
+    return null;
+}
+
+/**
+ * Resolve preview recipient user and recipients list HTML.
  *
  * @param \stdClass $course
  * @param \context_course $context
  * @param string $targettype
  * @param \stdClass $fallbackuser
+ * @param string $completionfilter
+ * @param \cm_info|null $cm
  * @return array{recipient: \stdClass, recipientshtml: string}
  */
 function local_learningjourney_get_preview_context(
     \stdClass $course,
     \context_course $context,
     string $targettype,
-    \stdClass $fallbackuser
+    \stdClass $fallbackuser,
+    string $completionfilter = 'all',
+    ?\cm_info $cm = null
 ): array {
-    $recipientshtml = '';
-    $recipient = $fallbackuser;
+    $recipients = local_learningjourney_get_expected_recipients(
+        $course,
+        $context,
+        $targettype,
+        $completionfilter,
+        $cm
+    );
+    $recipientshtml = local_learningjourney_render_recipients_preview($recipients, $targettype);
 
-    if ($targettype === 'manager_external') {
-        $recipientshtml = local_learningjourney_render_external_managers_recipients_preview($course, $context);
-        $externalmanagers = local_learningjourney_get_external_managers_for_course($course, $context);
-        if (!empty($externalmanagers)) {
-            $recipient = reset($externalmanagers);
-        }
+    $recipient = $fallbackuser;
+    if (!empty($recipients)) {
+        $recipient = reset($recipients);
     }
 
     return [
@@ -543,12 +571,19 @@ if ($previewdata) {
     global $USER, $SITE;
 
     $previewtargettype = $previewdata->targettype ?? 'student';
-    $previewcontext = local_learningjourney_get_preview_context($course, $context, $previewtargettype, $USER);
-    $previewuser = $previewcontext['recipient'];
-    $previewrecipientshtml = $previewcontext['recipientshtml'];
-
     $selectedcmids = local_learningjourney_normalize_cmids_input($previewdata->cmids ?? null);
     $previewmode = empty($selectedcmids) ? 'none' : (in_array(0, $selectedcmids, true) ? 'all' : 'specific');
+    $previewcm = local_learningjourney_resolve_preview_cm($previewmode, $selectedcmids, $cms);
+    $previewcontext = local_learningjourney_get_preview_context(
+        $course,
+        $context,
+        $previewtargettype,
+        $USER,
+        $previewdata->completionfilter ?? 'all',
+        $previewcm
+    );
+    $previewuser = $previewcontext['recipient'];
+    $previewrecipientshtml = $previewcontext['recipientshtml'];
 
     if ($previewmode === 'none') {
         $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);
@@ -767,10 +802,19 @@ if ($previewexistingid && !$previewdata) {
     $reminder = $DB->get_record('local_learningjourney', ['id' => $previewexistingid, 'courseid' => $course->id], '*', IGNORE_MISSING);
     if ($reminder) {
         $existingtargettype = $reminder->targettype ?? 'student';
-        $existingpreviewcontext = local_learningjourney_get_preview_context($course, $context, $existingtargettype, $USER);
+        $existingmode = local_learningjourney_get_activity_mode($reminder);
+        $existingcmids = local_learningjourney_parse_cmids($reminder);
+        $existingcm = local_learningjourney_resolve_preview_cm($existingmode, $existingcmids, $cms);
+        $existingpreviewcontext = local_learningjourney_get_preview_context(
+            $course,
+            $context,
+            $existingtargettype,
+            $USER,
+            $reminder->completionfilter ?? 'all',
+            $existingcm
+        );
         $existingpreviewuser = $existingpreviewcontext['recipient'];
         $existingrecipientshtml = $existingpreviewcontext['recipientshtml'];
-        $existingmode = local_learningjourney_get_activity_mode($reminder);
 
         if ($existingmode === 'none') {
             $courseurl = new moodle_url('/course/view.php', ['id' => $course->id]);

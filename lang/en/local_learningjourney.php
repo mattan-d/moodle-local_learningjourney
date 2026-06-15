@@ -44,6 +44,7 @@ $string['target_student'] = 'Students';
 $string['target_manager'] = 'Managers';
 $string['target_manager_external'] = 'Direct managers not enrolled in the course';
 $string['previewrecipientsheading'] = 'Expected recipients';
+$string['preview_norecipients'] = 'No recipients match the current reminder settings.';
 $string['preview_norecipients_external'] = 'No direct managers found who are not enrolled in this course.';
 $string['managerstatusheading'] = 'Learner progress for activity {$a->activity}';
 $string['managerstatus_complete'] = 'Completed';

@@ -316,33 +316,156 @@ function local_learningjourney_get_targettype_label(string $targettype): string 
 }
 
 /**
+ * Match enrolled user against completion filter (same rules as send_reminders task).
+ *
+ * @param completion_info $completion
+ * @param \cm_info $cm
+ * @param int $userid
+ * @param string $filter
+ * @return bool|null True/false for known filters; null when the user should be skipped.
+ */
+function local_learningjourney_user_matches_filter_for_send(
+    $completion,
+    $cm,
+    int $userid,
+    string $filter
+): ?bool {
+    if ($filter === 'all') {
+        return true;
+    }
+
+    $data = $completion->get_data($cm, false, $userid);
+    $iscomplete = !empty($data) && !empty($data->completionstate);
+
+    if ($filter === 'completed' || $filter === 'oncomplete') {
+        return $iscomplete;
+    }
+
+    if ($filter === 'notcompleted') {
+        return !$iscomplete;
+    }
+
+    return null;
+}
+
+/**
+ * Get users who would receive the reminder email (same logic as send_reminders task).
+ *
+ * @param \stdClass $course
+ * @param \context_course $context
+ * @param string $targettype student, manager, or manager_external
+ * @param string $completionfilter
+ * @param \cm_info|null $cm Specific activity when activity mode is "specific"; null otherwise.
+ * @return \stdClass[] Recipient user records keyed by id in the returned array values.
+ */
+function local_learningjourney_get_expected_recipients(
+    \stdClass $course,
+    \context_course $context,
+    string $targettype,
+    string $completionfilter = 'all',
+    ?\cm_info $cm = null
+): array {
+    $users = get_enrolled_users($context, '', 0, 'u.*');
+    if (empty($users)) {
+        return [];
+    }
+
+    if ($targettype === 'manager_external') {
+        return array_values(local_learningjourney_get_external_managers($course, $context, $users));
+    }
+
+    $completion = new completion_info($course);
+
+    if ($targettype === 'student') {
+        $recipients = [];
+        foreach ($users as $user) {
+            if ($cm) {
+                $matches = local_learningjourney_user_matches_filter_for_send(
+                    $completion,
+                    $cm,
+                    $user->id,
+                    $completionfilter
+                );
+                if ($matches === null) {
+                    continue;
+                }
+            }
+            $recipients[$user->id] = $user;
+        }
+
+        return array_values($recipients);
+    }
+
+    $managersbyuser = local_learningjourney_resolve_managers_by_learner($users);
+    $managerrecipients = [];
+    foreach ($users as $user) {
+        if ($cm) {
+            $matches = local_learningjourney_user_matches_filter_for_send(
+                $completion,
+                $cm,
+                $user->id,
+                $completionfilter
+            );
+            if ($matches === null) {
+                continue;
+            }
+        }
+        if (!isset($managersbyuser[$user->id])) {
+            continue;
+        }
+        $manager = $managersbyuser[$user->id];
+        $managerrecipients[$manager->id] = $manager;
+    }
+
+    return array_values($managerrecipients);
+}
+
+/**
+ * Build HTML list of expected reminder recipients for preview.
+ *
+ * @param \stdClass[] $recipients
+ * @param string $targettype
+ * @return string
+ */
+function local_learningjourney_render_recipients_preview(array $recipients, string $targettype = 'student'): string {
+    $heading = html_writer::tag('h4', get_string('previewrecipientsheading', 'local_learningjourney'));
+
+    if (empty($recipients)) {
+        $messagekey = ($targettype === 'manager_external')
+            ? 'preview_norecipients_external'
+            : 'preview_norecipients';
+
+        return $heading . html_writer::div(
+            get_string($messagekey, 'local_learningjourney'),
+            'alert alert-warning mb-0'
+        );
+    }
+
+    $items = [];
+    foreach ($recipients as $user) {
+        $label = fullname($user);
+        if (!empty($user->email)) {
+            $label .= ' (' . s($user->email) . ')';
+        }
+        $items[] = html_writer::tag('li', $label);
+    }
+
+    return $heading . html_writer::tag('ul', implode('', $items), ['class' => 'mb-0']);
+}
+
+/**
  * Build HTML list of external managers who will receive the reminder.
  *
  * @param \stdClass $course
  * @param \context_course $context
  * @return string
+ * @deprecated Use local_learningjourney_render_recipients_preview() instead.
  */
 function local_learningjourney_render_external_managers_recipients_preview(\stdClass $course, \context_course $context): string {
-    $managers = local_learningjourney_get_external_managers_for_course($course, $context);
+    $users = get_enrolled_users($context, '', 0, 'u.*');
+    $managers = local_learningjourney_get_external_managers($course, $context, $users);
 
-    if (empty($managers)) {
-        return html_writer::div(
-            get_string('preview_norecipients_external', 'local_learningjourney'),
-            'alert alert-warning mb-3'
-        );
-    }
-
-    $items = [];
-    foreach ($managers as $manager) {
-        $label = fullname($manager);
-        if (!empty($manager->email)) {
-            $label .= ' (' . s($manager->email) . ')';
-        }
-        $items[] = html_writer::tag('li', $label);
-    }
-
-    return html_writer::tag('h4', get_string('previewrecipientsheading', 'local_learningjourney')) .
-        html_writer::tag('ul', implode('', $items), ['class' => 'mb-3']);
+    return local_learningjourney_render_recipients_preview(array_values($managers), 'manager_external');
 }
 
 /**
