@@ -95,6 +95,13 @@ class send_reminders extends \core\task\scheduled_task {
             $managersbyuser = \local_learningjourney_resolve_managers_by_learner($users);
         }
 
+        $enrolledmanagerids = [];
+        if ($sendtomanagers) {
+            foreach (\local_learningjourney_get_enrolled_managers($course, $context, $users) as $managerid => $ignored) {
+                $enrolledmanagerids[$managerid] = true;
+            }
+        }
+
         $sentcount = 0;
 
         foreach ($users as $user) {
@@ -147,6 +154,9 @@ class send_reminders extends \core\task\scheduled_task {
             // Collect data for manager summary if this is a manager-type reminder and manager exists.
             if ($sendtomanagers && isset($managersbyuser[$user->id])) {
                 $manager = $managersbyuser[$user->id];
+                if (!isset($enrolledmanagerids[$manager->id])) {
+                    continue;
+                }
 
                 $progresspercent = progress::get_course_progress_percentage($course, $user->id);
                 if ($progresspercent === null) {

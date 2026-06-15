@@ -287,6 +287,35 @@ function local_learningjourney_get_external_managers(\stdClass $course, \context
 }
 
 /**
+ * Get unique direct managers of enrolled learners who are also enrolled in the course.
+ *
+ * @param \stdClass $course
+ * @param \context_course $context
+ * @param array $users Enrolled user records keyed by id.
+ * @return array managerid => manager user record
+ */
+function local_learningjourney_get_enrolled_managers(\stdClass $course, \context_course $context, array $users): array {
+    $managersbyuser = local_learningjourney_resolve_managers_by_learner($users);
+    if (empty($managersbyuser)) {
+        return [];
+    }
+
+    $enrolledids = [];
+    foreach ($users as $user) {
+        $enrolledids[$user->id] = true;
+    }
+
+    $enrolledmanagers = [];
+    foreach ($managersbyuser as $manager) {
+        if (isset($enrolledids[$manager->id])) {
+            $enrolledmanagers[$manager->id] = $manager;
+        }
+    }
+
+    return $enrolledmanagers;
+}
+
+/**
  * Get external managers for all learners enrolled in a course.
  *
  * @param \stdClass $course
@@ -414,6 +443,9 @@ function local_learningjourney_get_expected_recipients(
             continue;
         }
         $manager = $managersbyuser[$user->id];
+        if (!isset($users[$manager->id])) {
+            continue;
+        }
         $managerrecipients[$manager->id] = $manager;
     }
 

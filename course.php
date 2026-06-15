@@ -334,6 +334,10 @@ function local_learningjourney_get_manager_rows_preview(\stdClass $course, ?\cm_
     $completion = new completion_info($course);
 
     $managersbyuser = local_learningjourney_resolve_managers_by_learner($users);
+    $enrolledmanagerids = array_fill_keys(
+        array_keys(local_learningjourney_get_enrolled_managers($course, $context, $users)),
+        true
+    );
 
     $rowsbymanager = [];
     foreach ($users as $user) {
@@ -355,6 +359,9 @@ function local_learningjourney_get_manager_rows_preview(\stdClass $course, ?\cm_
             continue;
         }
         $manager = $managersbyuser[$user->id];
+        if (!isset($enrolledmanagerids[$manager->id])) {
+            continue;
+        }
         $progresspercent = \core_completion\progress::get_course_progress_percentage($course, $user->id);
         $progresspercent = ($progresspercent === null) ? 0 : round($progresspercent);
 
