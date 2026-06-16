@@ -298,50 +298,12 @@ class send_reminders extends \core\task\scheduled_task {
             $targettype
         );
 
-        // Use per-recipient token URLs so embedded images load in email clients without a Moodle login.
-        $message = $this->rewrite_message_files_for_email($message, $context, $reminderid, (int)$user->id);
+        // Inline images as data: URIs so email clients do not need Moodle authentication.
+        $message = \local_learningjourney_embed_message_images_for_email($message, $context, $reminderid);
 
         // Intentionally do not add any automatic footer.
 
         return $message;
-    }
-
-    /**
-     * Turn @@PLUGINFILE@@ paths into tokenpluginfile.php URLs for a specific recipient.
-     *
-     * @param string $message HTML still containing @@PLUGINFILE@@/... from the database.
-     * @param \context_course $context Course context where files are stored.
-     * @param int $reminderid Reminder id (file itemid).
-     * @param int $recipientuserid User who receives the email (token is scoped to this user).
-     * @return string
-     */
-    protected function rewrite_message_files_for_email(
-        string $message,
-        \context_course $context,
-        int $reminderid,
-        int $recipientuserid
-    ): string {
-        global $CFG;
-
-        if ($reminderid < 1 || $recipientuserid < 1) {
-            return $message;
-        }
-
-        $message = preg_replace('/@@pluginfile@@\//i', '@@PLUGINFILE@@/', $message);
-        $message = preg_replace('#@@PLUGINFILE@@([^/])#', '@@PLUGINFILE@@/$1', $message);
-
-        return file_rewrite_pluginfile_urls(
-            $message,
-            'pluginfile.php',
-            $context->id,
-            'local_learningjourney',
-            'message',
-            $reminderid,
-            [
-                'includetoken' => $recipientuserid,
-                'forcehttps' => strpos($CFG->wwwroot, 'https://') === 0,
-            ]
-        );
     }
 
     /**
@@ -403,11 +365,10 @@ class send_reminders extends \core\task\scheduled_task {
                 $directreportsbyusername,
                 'manager'
             );
-            $message = $this->rewrite_message_files_for_email(
+            $message = \local_learningjourney_embed_message_images_for_email(
                 $message,
                 $context,
-                (int)$reminder->id,
-                (int)$manager->id
+                (int)$reminder->id
             );
 
             if ($activitymode !== 'none') {

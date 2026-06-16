@@ -257,15 +257,8 @@ function local_learningjourney_format_message_embeds(
             ['forcehttps' => $forcehttps]
         );
     } else if ($reminderitemid > 0) {
-        $html = file_rewrite_pluginfile_urls(
-            $html,
-            'pluginfile.php',
-            $context->id,
-            'local_learningjourney',
-            'message',
-            $reminderitemid,
-            ['forcehttps' => $forcehttps]
-        );
+        // Match sent email: inline images as data: URIs (no Moodle login required).
+        $html = local_learningjourney_embed_message_images_for_email($html, $context, $reminderitemid);
     }
 
     return format_text($html, FORMAT_HTML, [

@@ -72,6 +72,100 @@ function local_learningjourney_pluginfile($course, $cm, $context, $filearea, $ar
 }
 
 /**
+ * Resolve a stored reminder image to a data: URI for inline email embedding.
+ *
+ * @param \file_storage $fs
+ * @param int $contextid
+ * @param int $reminderid
+ * @param string $relativepath Encoded or plain path after itemid (e.g. filename or subdir/filename).
+ * @return string|null
+ */
+function local_learningjourney_message_image_to_datauri(
+    \file_storage $fs,
+    int $contextid,
+    int $reminderid,
+    string $relativepath
+): ?string {
+    $relativepath = ltrim(rawurldecode($relativepath), '/');
+    if ($relativepath === '') {
+        return null;
+    }
+
+    $parts = explode('/', $relativepath);
+    $filename = array_pop($parts);
+    if ($filename === null || $filename === '') {
+        return null;
+    }
+
+    $filepath = $parts ? '/' . implode('/', $parts) . '/' : '/';
+    $file = $fs->get_file($contextid, 'local_learningjourney', 'message', $reminderid, $filepath, $filename);
+    if (!$file || $file->is_directory() || !$file->is_valid_image()) {
+        return null;
+    }
+
+    return 'data:' . $file->get_mimetype() . ';base64,' . base64_encode($file->get_content());
+}
+
+/**
+ * Embed reminder message images as data: URIs so email clients can display them without Moodle auth.
+ *
+ * Handles @@PLUGINFILE@@ paths and pluginfile.php / tokenpluginfile.php URLs for this reminder.
+ *
+ * @param string $html Message HTML.
+ * @param \context $context Course context where files are stored.
+ * @param int $reminderid Reminder id (file itemid).
+ * @return string
+ */
+function local_learningjourney_embed_message_images_for_email(string $html, \context $context, int $reminderid): string {
+    if ($reminderid < 1 || trim($html) === '') {
+        return $html;
+    }
+
+    $html = preg_replace('/@@pluginfile@@\//i', '@@PLUGINFILE@@/', $html);
+    $html = preg_replace('#@@PLUGINFILE@@([^/])#', '@@PLUGINFILE@@/$1', $html);
+
+    $fs = get_file_storage();
+    $contextid = (int)$context->id;
+
+    $resolve = static function(string $relativepath) use ($fs, $contextid, $reminderid): ?string {
+        return local_learningjourney_message_image_to_datauri($fs, $contextid, $reminderid, $relativepath);
+    };
+
+    $html = preg_replace_callback(
+        '#@@PLUGINFILE@@/([^"\'\s>]+)#i',
+        static function(array $matches) use ($resolve): string {
+            $datauri = $resolve($matches[1]);
+            return $datauri ?? $matches[0];
+        },
+        $html
+    );
+
+    $pluginfilepattern = '#(?:https?://[^/"\']+)?/pluginfile\.php/' . $contextid .
+        '/local_learningjourney/message/' . $reminderid . '/([^"\'\s>]+)#i';
+    $html = preg_replace_callback(
+        $pluginfilepattern,
+        static function(array $matches) use ($resolve): string {
+            $datauri = $resolve($matches[1]);
+            return $datauri ?? $matches[0];
+        },
+        $html
+    );
+
+    $tokenpattern = '#(?:https?://[^/"\']+)?/tokenpluginfile\.php/[^/]+/' . $contextid .
+        '/local_learningjourney/message/' . $reminderid . '/([^"\'\s>]+)#i';
+    $html = preg_replace_callback(
+        $tokenpattern,
+        static function(array $matches) use ($resolve): string {
+            $datauri = $resolve($matches[1]);
+            return $datauri ?? $matches[0];
+        },
+        $html
+    );
+
+    return $html;
+}
+
+/**
  * Resolve direct managers for a set of learners via custom profile field "manager" (username).
  *
  * @param array $users Enrolled learner user records keyed by id.
