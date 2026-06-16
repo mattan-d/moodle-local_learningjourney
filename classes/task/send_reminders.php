@@ -100,6 +100,7 @@ class send_reminders extends \core\task\scheduled_task {
         }
 
         $sentcount = 0;
+        $enrolledmanagerids = local_learningjourney_get_enrolled_manager_userids($users);
 
         foreach ($users as $user) {
             if ($cm) {
@@ -113,6 +114,10 @@ class send_reminders extends \core\task\scheduled_task {
             }
 
             if ($targettype === 'student') {
+                if (!\local_learningjourney_user_is_regular_student($users, (int)$user->id, $enrolledmanagerids)) {
+                    continue;
+                }
+
                 // Send to student.
                 $rawsubject = $reminder->subject ?: $this->get_default_subject($course, $cm, $activitymode);
                 $subject = $this->replace_placeholders($rawsubject, $user, $course, $cm, $activityurl, $courseurl, $activitymode, $context, $directreportsbyusername, $targettype);

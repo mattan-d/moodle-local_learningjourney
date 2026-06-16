@@ -637,6 +637,40 @@ function local_learningjourney_get_enrolled_managers(\stdClass $course, \context
 }
 
 /**
+ * User ids of enrolled team managers and department managers in a course.
+ *
+ * @param array $users Enrolled user records keyed by id.
+ * @return array manager userid => true
+ */
+function local_learningjourney_get_enrolled_manager_userids(array $users): array {
+    $managerids = [];
+    foreach (local_learningjourney_get_enrolled_team_managers($users) as $managerid => $ignored) {
+        $managerids[$managerid] = true;
+    }
+    foreach (local_learningjourney_get_enrolled_department_managers($users) as $managerid => $ignored) {
+        $managerids[$managerid] = true;
+    }
+
+    return $managerids;
+}
+
+/**
+ * Whether an enrolled user is a regular student (not a team or department manager).
+ *
+ * @param array $users Enrolled user records keyed by id.
+ * @param int $userid
+ * @param array|null $managerids Optional pre-built map from local_learningjourney_get_enrolled_manager_userids().
+ * @return bool
+ */
+function local_learningjourney_user_is_regular_student(array $users, int $userid, ?array $managerids = null): bool {
+    if ($managerids === null) {
+        $managerids = local_learningjourney_get_enrolled_manager_userids($users);
+    }
+
+    return !isset($managerids[$userid]);
+}
+
+/**
  * Get external managers for all learners enrolled in a course.
  *
  * @param \stdClass $course
@@ -727,8 +761,12 @@ function local_learningjourney_get_expected_recipients(
     $completion = new completion_info($course);
 
     if ($targettype === 'student') {
+        $managerids = local_learningjourney_get_enrolled_manager_userids($users);
         $recipients = [];
         foreach ($users as $user) {
+            if (!local_learningjourney_user_is_regular_student($users, (int)$user->id, $managerids)) {
+                continue;
+            }
             if ($cm) {
                 $matches = local_learningjourney_user_matches_filter_for_send(
                     $completion,
