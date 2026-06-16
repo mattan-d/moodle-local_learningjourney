@@ -381,7 +381,244 @@ function local_learningjourney_get_external_managers(\stdClass $course, \context
 }
 
 /**
+ * Whether a profile field value is a usable department id.
+ *
+ * @param mixed $value
+ * @return bool
+ */
+function local_learningjourney_is_valid_departmentid($value): bool {
+    $value = trim((string)$value);
+    return $value !== '' && $value !== '0' && $value !== '00000000';
+}
+
+/**
+ * Batch-fetch custom profile field values for users.
+ *
+ * @param int[] $userids
+ * @param string $shortname Field shortname.
+ * @return array userid => trimmed field value
+ */
+function local_learningjourney_fetch_profile_field_for_users(array $userids, string $shortname): array {
+    global $DB;
+
+    if (empty($userids)) {
+        return [];
+    }
+
+    $field = $DB->get_record('user_info_field', ['shortname' => $shortname], 'id', IGNORE_MISSING);
+    if (!$field) {
+        return [];
+    }
+
+    list($insql, $params) = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED, 'uid');
+    $params['fieldid'] = $field->id;
+    $records = $DB->get_records_select('user_info_data', "fieldid = :fieldid AND userid {$insql}", $params);
+
+    $values = [];
+    foreach ($records as $record) {
+        $values[(int)$record->userid] = trim((string)$record->data);
+    }
+
+    return $values;
+}
+
+/**
+ * Enrolled department managers: users with ismgr=1 and a valid departmentid profile field.
+ *
+ * @param array $users Enrolled user records keyed by id.
+ * @param array|null $departmentids Optional userid => departmentid map.
+ * @param array|null $ismgrvalues Optional userid => ismgr value map.
+ * @return array managerid => manager user record
+ */
+function local_learningjourney_get_enrolled_department_managers(
+    array $users,
+    ?array $departmentids = null,
+    ?array $ismgrvalues = null
+): array {
+    if (empty($users)) {
+        return [];
+    }
+
+    $userids = array_map(static function($user) {
+        return $user->id;
+    }, $users);
+
+    if ($departmentids === null) {
+        $departmentids = local_learningjourney_fetch_profile_field_for_users($userids, 'departmentid');
+    }
+    if ($ismgrvalues === null) {
+        $ismgrvalues = local_learningjourney_fetch_profile_field_for_users($userids, 'ismgr');
+    }
+
+    $managers = [];
+    foreach ($users as $user) {
+        $departmentid = $departmentids[$user->id] ?? '';
+        if (!local_learningjourney_is_valid_departmentid($departmentid)) {
+            continue;
+        }
+        if (($ismgrvalues[$user->id] ?? '') !== '1') {
+            continue;
+        }
+        $managers[$user->id] = $user;
+    }
+
+    return $managers;
+}
+
+/**
+ * Append a learner row to a manager summary without duplicates.
+ *
+ * @param array $managerrows managerid => row objects (by reference).
+ * @param int $managerid
+ * @param \stdClass $learner
+ * @param bool|null $iscomplete
+ * @param int $progresspercent
+ * @return void
+ */
+function local_learningjourney_add_manager_row(
+    array &$managerrows,
+    int $managerid,
+    \stdClass $learner,
+    ?bool $iscomplete,
+    int $progresspercent
+): void {
+    if (!isset($managerrows[$managerid])) {
+        $managerrows[$managerid] = [];
+    }
+
+    foreach ($managerrows[$managerid] as $row) {
+        if ($row->learner->id === $learner->id) {
+            return;
+        }
+    }
+
+    $managerrows[$managerid][] = (object)[
+        'learner' => $learner,
+        'complete' => (bool)$iscomplete,
+        'progress' => $progresspercent,
+    ];
+}
+
+/**
+ * Build manager summary rows for team managers and department managers.
+ *
+ * @param \stdClass $course
+ * @param array $users Enrolled users keyed by id.
+ * @param completion_info $completion
+ * @param \cm_info|null $cm
+ * @param string $completionfilter
+ * @return array managerid => array of row objects
+ */
+function local_learningjourney_collect_manager_rows(
+    \stdClass $course,
+    array $users,
+    completion_info $completion,
+    ?\cm_info $cm,
+    string $completionfilter
+): array {
+    if (empty($users)) {
+        return [];
+    }
+
+    $managersbyuser = local_learningjourney_resolve_managers_by_learner($users);
+    $departmentids = local_learningjourney_fetch_profile_field_for_users(array_keys($users), 'departmentid');
+    $departmentmanagers = local_learningjourney_get_enrolled_department_managers($users, $departmentids);
+
+    $enrolledmanagerids = [];
+    foreach (local_learningjourney_get_enrolled_team_managers($users, $managersbyuser) as $managerid => $ignored) {
+        $enrolledmanagerids[$managerid] = true;
+    }
+    foreach ($departmentmanagers as $managerid => $ignored) {
+        $enrolledmanagerids[$managerid] = true;
+    }
+
+    $managerrows = [];
+
+    foreach ($users as $user) {
+        if ($cm) {
+            $iscomplete = local_learningjourney_user_matches_filter_for_send(
+                $completion,
+                $cm,
+                $user->id,
+                $completionfilter
+            );
+            if ($iscomplete === null) {
+                continue;
+            }
+        } else {
+            $iscomplete = null;
+        }
+
+        $progresspercent = \core_completion\progress::get_course_progress_percentage($course, $user->id);
+        $progresspercent = ($progresspercent === null) ? 0 : round($progresspercent);
+
+        if (isset($managersbyuser[$user->id])) {
+            $manager = $managersbyuser[$user->id];
+            if (isset($enrolledmanagerids[$manager->id])) {
+                local_learningjourney_add_manager_row(
+                    $managerrows,
+                    (int)$manager->id,
+                    $user,
+                    $iscomplete,
+                    $progresspercent
+                );
+            }
+        }
+
+        $learnerdepartmentid = $departmentids[$user->id] ?? '';
+        if (!local_learningjourney_is_valid_departmentid($learnerdepartmentid)) {
+            continue;
+        }
+
+        foreach ($departmentmanagers as $departmentmanager) {
+            if ((int)$departmentmanager->id === (int)$user->id) {
+                continue;
+            }
+            $managerdepartmentid = $departmentids[$departmentmanager->id] ?? '';
+            if ($managerdepartmentid === $learnerdepartmentid) {
+                local_learningjourney_add_manager_row(
+                    $managerrows,
+                    (int)$departmentmanager->id,
+                    $user,
+                    $iscomplete,
+                    $progresspercent
+                );
+            }
+        }
+    }
+
+    return $managerrows;
+}
+
+/**
+ * Get unique enrolled team managers (via learner manager profile field).
+ *
+ * @param array $users Enrolled user records keyed by id.
+ * @param array|null $managersbyuser Optional pre-built learner => manager map.
+ * @return array managerid => manager user record
+ */
+function local_learningjourney_get_enrolled_team_managers(array $users, ?array $managersbyuser = null): array {
+    if ($managersbyuser === null) {
+        $managersbyuser = local_learningjourney_resolve_managers_by_learner($users);
+    }
+    if (empty($managersbyuser)) {
+        return [];
+    }
+
+    $enrolledmanagers = [];
+    foreach ($managersbyuser as $manager) {
+        if (isset($users[$manager->id])) {
+            $enrolledmanagers[$manager->id] = $manager;
+        }
+    }
+
+    return $enrolledmanagers;
+}
+
+/**
  * Get unique direct managers of enrolled learners who are also enrolled in the course.
+ *
+ * Includes team managers and enrolled department managers (ismgr + departmentid).
  *
  * @param \stdClass $course
  * @param \context_course $context
@@ -389,21 +626,11 @@ function local_learningjourney_get_external_managers(\stdClass $course, \context
  * @return array managerid => manager user record
  */
 function local_learningjourney_get_enrolled_managers(\stdClass $course, \context_course $context, array $users): array {
-    $managersbyuser = local_learningjourney_resolve_managers_by_learner($users);
-    if (empty($managersbyuser)) {
-        return [];
-    }
+    unset($course, $context);
 
-    $enrolledids = [];
-    foreach ($users as $user) {
-        $enrolledids[$user->id] = true;
-    }
-
-    $enrolledmanagers = [];
-    foreach ($managersbyuser as $manager) {
-        if (isset($enrolledids[$manager->id])) {
-            $enrolledmanagers[$manager->id] = $manager;
-        }
+    $enrolledmanagers = local_learningjourney_get_enrolled_team_managers($users);
+    foreach (local_learningjourney_get_enrolled_department_managers($users) as $managerid => $manager) {
+        $enrolledmanagers[$managerid] = $manager;
     }
 
     return $enrolledmanagers;
@@ -519,31 +746,25 @@ function local_learningjourney_get_expected_recipients(
         return array_values($recipients);
     }
 
-    $managersbyuser = local_learningjourney_resolve_managers_by_learner($users);
-    $managerrecipients = [];
-    foreach ($users as $user) {
-        if ($cm) {
-            $matches = local_learningjourney_user_matches_filter_for_send(
-                $completion,
-                $cm,
-                $user->id,
-                $completionfilter
-            );
-            if ($matches === null) {
-                continue;
+    if ($targettype === 'manager') {
+        $managerrows = local_learningjourney_collect_manager_rows(
+            $course,
+            $users,
+            $completion,
+            $cm,
+            $completionfilter
+        );
+        $recipients = [];
+        foreach ($managerrows as $managerid => $ignored) {
+            if (isset($users[$managerid])) {
+                $recipients[$managerid] = $users[$managerid];
             }
         }
-        if (!isset($managersbyuser[$user->id])) {
-            continue;
-        }
-        $manager = $managersbyuser[$user->id];
-        if (!isset($users[$manager->id])) {
-            continue;
-        }
-        $managerrecipients[$manager->id] = $manager;
+
+        return array_values($recipients);
     }
 
-    return array_values($managerrecipients);
+    return [];
 }
 
 /**

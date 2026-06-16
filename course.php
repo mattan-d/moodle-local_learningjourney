@@ -316,8 +316,6 @@ function local_learningjourney_user_matches_filter_preview(
  * @return array managerid => array of row objects
  */
 function local_learningjourney_get_manager_rows_preview(\stdClass $course, ?\cm_info $cm, string $completionfilter): array {
-    global $DB;
-
     $context = context_course::instance($course->id);
     $users = get_enrolled_users($context, '', 0, 'u.*');
     if (empty($users)) {
@@ -326,46 +324,7 @@ function local_learningjourney_get_manager_rows_preview(\stdClass $course, ?\cm_
 
     $completion = new completion_info($course);
 
-    $managersbyuser = local_learningjourney_resolve_managers_by_learner($users);
-    $enrolledmanagerids = array_fill_keys(
-        array_keys(local_learningjourney_get_enrolled_managers($course, $context, $users)),
-        true
-    );
-
-    $rowsbymanager = [];
-    foreach ($users as $user) {
-        $iscomplete = local_learningjourney_user_matches_filter_preview($completion, $cm, $user->id, $completionfilter);
-        if ($cm && $iscomplete === null) {
-            continue;
-        }
-        if ($cm && ($completionfilter === 'completed' || $completionfilter === 'oncomplete' || $completionfilter === 'notcompleted')) {
-            if ($completionfilter === 'completed' || $completionfilter === 'oncomplete') {
-                if (!$iscomplete) {
-                    continue;
-                }
-            } else if ($completionfilter === 'notcompleted' && $iscomplete) {
-                continue;
-            }
-        }
-
-        if (!isset($managersbyuser[$user->id])) {
-            continue;
-        }
-        $manager = $managersbyuser[$user->id];
-        if (!isset($enrolledmanagerids[$manager->id])) {
-            continue;
-        }
-        $progresspercent = \core_completion\progress::get_course_progress_percentage($course, $user->id);
-        $progresspercent = ($progresspercent === null) ? 0 : round($progresspercent);
-
-        $rowsbymanager[$manager->id][] = (object)[
-            'learner' => $user,
-            'complete' => (bool)$iscomplete,
-            'progress' => $progresspercent,
-        ];
-    }
-
-    return $rowsbymanager;
+    return local_learningjourney_collect_manager_rows($course, $users, $completion, $cm, $completionfilter);
 }
 
 /**
