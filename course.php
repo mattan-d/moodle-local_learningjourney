@@ -978,11 +978,12 @@ if (!empty($reminders)) {
     $table = new html_table();
     $table->head = [
         get_string('activity', 'local_learningjourney'),
+        get_string('subject', 'local_learningjourney'),
         get_string('timetosend', 'local_learningjourney'),
         get_string('targettype', 'local_learningjourney'),
         get_string('completionfilter', 'local_learningjourney'),
         get_string('status', 'local_learningjourney'),
-            get_string('sentcount', 'local_learningjourney'),
+        get_string('sentcount', 'local_learningjourney'),
         get_string('actions', 'local_learningjourney'),
     ];
 
@@ -1041,8 +1042,11 @@ if (!empty($reminders)) {
 
         $actionshtml = html_writer::span($previewicon . ' ' . $editicon . ' ' . $deleteicon, 'actions');
 
+        $subjectdisplay = !empty($reminder->subject) ? s($reminder->subject) : '-';
+
         $row = new html_table_row([
             $activityname,
+            $subjectdisplay,
             userdate($reminder->timetosend),
             $target,
             $filterstr,
