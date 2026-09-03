@@ -332,8 +332,10 @@ function local_learningjourney_get_direct_manager_replacements(
     $managerusername = trim((string)($recipient->username ?? ''));
     $employees = ($managerusername !== '') ? ($directreportsbyusername[$managerusername] ?? []) : [];
 
-    // External managers receive mail as the employee's direct manager — use their own name.
-    if ($targettype === 'manager_external') {
+    // External managers receive mail as the employee's direct manager, so use their own name.
+    if ($targettype === 'manager_external' || (
+        $targettype === 'manager_combined' && !is_enrolled($context, $recipient)
+    )) {
         $directmanager = fullname($recipient);
     } else {
         $manager = local_learningjourney_get_user_direct_manager((int)$recipient->id);
@@ -694,6 +696,8 @@ function local_learningjourney_get_targettype_label(string $targettype): string 
             return get_string('target_manager', 'local_learningjourney');
         case 'manager_external':
             return get_string('target_manager_external', 'local_learningjourney');
+        case 'manager_combined':
+            return get_string('target_manager_combined', 'local_learningjourney');
         default:
             return get_string('target_student', 'local_learningjourney');
     }
@@ -737,7 +741,7 @@ function local_learningjourney_user_matches_filter_for_send(
  *
  * @param \stdClass $course
  * @param \context_course $context
- * @param string $targettype student, manager, or manager_external
+ * @param string $targettype student, manager, manager_external, or manager_combined
  * @param string $completionfilter
  * @param \cm_info|null $cm Specific activity when activity mode is "specific"; null otherwise.
  * @return \stdClass[] Recipient user records keyed by id in the returned array values.
@@ -797,6 +801,28 @@ function local_learningjourney_get_expected_recipients(
             if (isset($users[$managerid])) {
                 $recipients[$managerid] = $users[$managerid];
             }
+        }
+
+        return array_values($recipients);
+    }
+
+    if ($targettype === 'manager_combined') {
+        $managerrows = local_learningjourney_collect_manager_rows(
+            $course,
+            $users,
+            $completion,
+            $cm,
+            $completionfilter
+        );
+        $recipients = [];
+        foreach ($managerrows as $managerid => $ignored) {
+            if (isset($users[$managerid])) {
+                $recipients[$managerid] = $users[$managerid];
+            }
+        }
+
+        foreach (local_learningjourney_get_external_managers($course, $context, $users) as $managerid => $manager) {
+            $recipients[$managerid] = $manager;
         }
 
         return array_values($recipients);

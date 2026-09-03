@@ -43,6 +43,7 @@ $string['targettype'] = 'למי לשלוח';
 $string['target_student'] = 'סטודנטים';
 $string['target_manager'] = 'מנהלים רשומים בקורס';
 $string['target_manager_external'] = 'מנהלים ישירים שאינם רשומים בקורס';
+$string['target_manager_combined'] = 'מנהלים רשומים בקורס + מנהלים ישירים שאינם רשומים בקורס';
 $string['previewrecipientsheading'] = 'נמענים צפויים';
 $string['preview_norecipients'] = 'אין נמענים התואמים להגדרות התזכורת הנוכחיות.';
 $string['preview_norecipients_external'] = 'לא נמצאו מנהלים ישירים שאינם רשומים בקורס.';

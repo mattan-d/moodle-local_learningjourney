@@ -613,7 +613,7 @@ if ($previewdata) {
         );
 
         // Manager preview: show the same summary table structure sent by cron.
-        if ($previewtargettype === 'manager') {
+        if (in_array($previewtargettype, ['manager', 'manager_combined'], true)) {
             $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, $cm, $previewdata->completionfilter ?? 'all');
             $managerrows = $rowsbymanager[$USER->id] ?? [];
             if (empty($managerrows) && !empty($rowsbymanager)) {
@@ -664,7 +664,7 @@ if ($previewdata) {
             0
         );
 
-        if ($previewtargettype === 'manager') {
+        if (in_array($previewtargettype, ['manager', 'manager_combined'], true)) {
             $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, null, $previewdata->completionfilter ?? 'all');
             $managerrows = $rowsbymanager[$USER->id] ?? [];
             if (empty($managerrows) && !empty($rowsbymanager)) {
@@ -834,7 +834,7 @@ if ($previewexistingid && !$previewdata) {
             $message = local_learningjourney_replace_placeholders_preview($message, $existingpreviewuser, $course, $cm, $activityurl, $courseurl, 'specific', $context, $existingtargettype);
             $message = local_learningjourney_format_message_embeds($message, $context, 0, (int)$reminder->id);
 
-            if ($existingtargettype === 'manager') {
+            if (in_array($existingtargettype, ['manager', 'manager_combined'], true)) {
                 $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, $cm, $reminder->completionfilter ?? 'all');
                 $managerrows = $rowsbymanager[$USER->id] ?? [];
                 if (empty($managerrows) && !empty($rowsbymanager)) {
@@ -881,7 +881,7 @@ if ($previewexistingid && !$previewdata) {
             $message = local_learningjourney_replace_placeholders_preview($message, $existingpreviewuser, $course, null, $courseurl, $courseurl, 'specific', $context, $existingtargettype);
             $message = local_learningjourney_format_message_embeds($message, $context, 0, (int)$reminder->id);
 
-            if ($existingtargettype === 'manager') {
+            if (in_array($existingtargettype, ['manager', 'manager_combined'], true)) {
                 $rowsbymanager = local_learningjourney_get_manager_rows_preview($course, null, $reminder->completionfilter ?? 'all');
                 $managerrows = $rowsbymanager[$USER->id] ?? [];
                 if (empty($managerrows) && !empty($rowsbymanager)) {
