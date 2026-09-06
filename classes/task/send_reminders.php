@@ -85,8 +85,9 @@ class send_reminders extends \core\task\scheduled_task {
         $directreportsbyusername = \local_learningjourney_build_direct_reports_by_manager_username($users);
 
         $targettype = $reminder->targettype ?? 'student';
-        $sendtomanagers = in_array($targettype, ['manager', 'manager_combined'], true);
+        $sendtomanagers = in_array($targettype, ['manager', 'manager_combined', 'student_manager'], true);
         $sendtoexternalmanagers = in_array($targettype, ['manager_external', 'manager_combined'], true);
+        $sendtostudents = in_array($targettype, ['student', 'student_manager'], true);
 
         $managerrows = [];
         if ($sendtomanagers) {
@@ -113,7 +114,7 @@ class send_reminders extends \core\task\scheduled_task {
                 $iscomplete = null;
             }
 
-            if ($targettype === 'student') {
+            if ($sendtostudents) {
                 if (!\local_learningjourney_user_is_regular_student($users, (int)$user->id, $enrolledmanagerids)) {
                     continue;
                 }

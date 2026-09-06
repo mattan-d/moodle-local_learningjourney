@@ -59,6 +59,7 @@ class reminder_form extends moodleform {
             'manager' => get_string('target_manager', 'local_learningjourney'),
             'manager_external' => get_string('target_manager_external', 'local_learningjourney'),
             'manager_combined' => get_string('target_manager_combined', 'local_learningjourney'),
+            'student_manager' => get_string('target_student_manager', 'local_learningjourney'),
         ];
         $mform->addElement('select', 'targettype', get_string('targettype', 'local_learningjourney'), $typoptions);
         $mform->setDefault('targettype', 'student');

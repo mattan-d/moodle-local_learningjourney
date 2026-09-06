@@ -698,6 +698,8 @@ function local_learningjourney_get_targettype_label(string $targettype): string 
             return get_string('target_manager_external', 'local_learningjourney');
         case 'manager_combined':
             return get_string('target_manager_combined', 'local_learningjourney');
+        case 'student_manager':
+            return get_string('target_student_manager', 'local_learningjourney');
         default:
             return get_string('target_student', 'local_learningjourney');
     }
@@ -741,7 +743,7 @@ function local_learningjourney_user_matches_filter_for_send(
  *
  * @param \stdClass $course
  * @param \context_course $context
- * @param string $targettype student, manager, manager_external, or manager_combined
+ * @param string $targettype student, manager, manager_external, manager_combined, or student_manager
  * @param string $completionfilter
  * @param \cm_info|null $cm Specific activity when activity mode is "specific"; null otherwise.
  * @return \stdClass[] Recipient user records keyed by id in the returned array values.
@@ -764,7 +766,7 @@ function local_learningjourney_get_expected_recipients(
 
     $completion = new completion_info($course);
 
-    if ($targettype === 'student') {
+    if ($targettype === 'student' || $targettype === 'student_manager') {
         $managerids = local_learningjourney_get_enrolled_manager_userids($users);
         $recipients = [];
         foreach ($users as $user) {
@@ -783,6 +785,23 @@ function local_learningjourney_get_expected_recipients(
                 }
             }
             $recipients[$user->id] = $user;
+        }
+
+        if ($targettype === 'student') {
+            return array_values($recipients);
+        }
+
+        $managerrows = local_learningjourney_collect_manager_rows(
+            $course,
+            $users,
+            $completion,
+            $cm,
+            $completionfilter
+        );
+        foreach ($managerrows as $managerid => $ignored) {
+            if (isset($users[$managerid])) {
+                $recipients[$managerid] = $users[$managerid];
+            }
         }
 
         return array_values($recipients);

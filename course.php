@@ -685,7 +685,7 @@ if ($previewdata) {
             if (!empty($table->data)) {
                 $message .= html_writer::table($table);
             }
-        } else if ($previewtargettype === 'student') {
+        } else if (in_array($previewtargettype, ['student', 'student_manager'], true)) {
             // Student preview for all activities or multiple: activity statuses + course progress.
             $completion = new completion_info($course);
             $modinfo = get_fast_modinfo($course);
@@ -900,7 +900,7 @@ if ($previewexistingid && !$previewdata) {
                 if (!empty($table->data)) {
                     $message .= html_writer::table($table);
                 }
-            } else if ($existingtargettype === 'student') {
+            } else if (in_array($existingtargettype, ['student', 'student_manager'], true)) {
                 // Student preview for all activities.
                 $completion = new completion_info($course);
                 $modinfo = get_fast_modinfo($course);
