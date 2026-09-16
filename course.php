@@ -274,6 +274,7 @@ function local_learningjourney_format_message_embeds(
  * Preview helper: match user against selected filter.
  *
  * @param completion_info $completion
+ * @param \stdClass $course
  * @param \cm_info|null $cm
  * @param int $userid
  * @param string $filter
@@ -281,30 +282,12 @@ function local_learningjourney_format_message_embeds(
  */
 function local_learningjourney_user_matches_filter_preview(
     completion_info $completion,
+    \stdClass $course,
     ?\cm_info $cm,
     int $userid,
     string $filter
 ): ?bool {
-    if (!$cm) {
-        // Keep parity with scheduled task for "all activities".
-        return null;
-    }
-
-    if ($filter === 'all') {
-        return true;
-    }
-
-    $data = $completion->get_data($cm, false, $userid);
-    $iscomplete = !empty($data) && !empty($data->completionstate);
-
-    if ($filter === 'completed' || $filter === 'oncomplete') {
-        return $iscomplete;
-    }
-    if ($filter === 'notcompleted') {
-        return !$iscomplete;
-    }
-
-    return null;
+    return local_learningjourney_user_matches_filter_for_send($completion, $course, $cm, $userid, $filter);
 }
 
 /**

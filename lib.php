@@ -537,19 +537,18 @@ function local_learningjourney_collect_manager_rows(
     $managerrows = [];
 
     foreach ($users as $user) {
-        if ($cm) {
-            $iscomplete = local_learningjourney_user_matches_filter_for_send(
-                $completion,
-                $cm,
-                $user->id,
-                $completionfilter
-            );
-            if ($iscomplete === null) {
-                continue;
-            }
-        } else {
-            $iscomplete = null;
+        $matches = local_learningjourney_user_matches_filter_for_send(
+            $completion,
+            $course,
+            $cm,
+            $user->id,
+            $completionfilter
+        );
+        if ($matches !== true) {
+            continue;
         }
+
+        $iscomplete = local_learningjourney_is_user_complete($completion, $course, $cm, $user->id);
 
         $progresspercent = \core_completion\progress::get_course_progress_percentage($course, $user->id);
         $progresspercent = ($progresspercent === null) ? 0 : round($progresspercent);
@@ -706,16 +705,57 @@ function local_learningjourney_get_targettype_label(string $targettype): string 
 }
 
 /**
- * Match enrolled user against completion filter (same rules as send_reminders task).
+ * Resolve whether a user has completed the selected activity, or the course when no activity is set.
  *
  * @param completion_info $completion
- * @param \cm_info $cm
+ * @param \stdClass $course
+ * @param \cm_info|\stdClass|null $cm
+ * @param int $userid
+ * @return bool|null True/false when known; null when completion cannot be evaluated.
+ */
+function local_learningjourney_is_user_complete(
+    $completion,
+    \stdClass $course,
+    $cm,
+    int $userid
+): ?bool {
+    if ($cm) {
+        $data = $completion->get_data($cm, false, $userid);
+        return !empty($data) && !empty($data->completionstate);
+    }
+
+    if (!$completion->is_enabled()) {
+        return null;
+    }
+
+    if ($completion->is_course_complete($userid)) {
+        return true;
+    }
+
+    $progress = \core_completion\progress::get_course_progress_percentage($course, $userid);
+    if ($progress === null) {
+        return null;
+    }
+
+    return (float)$progress >= 100.0;
+}
+
+/**
+ * Match enrolled user against completion filter (same rules as send_reminders task).
+ *
+ * When no specific activity is selected, course completion / 100% progress is used.
+ *
+ * @param completion_info $completion
+ * @param \stdClass $course
+ * @param \cm_info|\stdClass|null $cm
  * @param int $userid
  * @param string $filter
- * @return bool|null True/false for known filters; null when the user should be skipped.
+ * @return bool|null True when the user should receive the reminder; false when excluded;
+ *                   null when the filter is unknown.
  */
 function local_learningjourney_user_matches_filter_for_send(
     $completion,
+    \stdClass $course,
     $cm,
     int $userid,
     string $filter
@@ -724,8 +764,11 @@ function local_learningjourney_user_matches_filter_for_send(
         return true;
     }
 
-    $data = $completion->get_data($cm, false, $userid);
-    $iscomplete = !empty($data) && !empty($data->completionstate);
+    $iscomplete = local_learningjourney_is_user_complete($completion, $course, $cm, $userid);
+    // If completion cannot be evaluated, treat as not complete so "notcompleted" still works.
+    if ($iscomplete === null) {
+        $iscomplete = false;
+    }
 
     if ($filter === 'completed' || $filter === 'oncomplete') {
         return $iscomplete;
@@ -773,16 +816,15 @@ function local_learningjourney_get_expected_recipients(
             if (!local_learningjourney_user_is_regular_student($users, (int)$user->id, $managerids)) {
                 continue;
             }
-            if ($cm) {
-                $matches = local_learningjourney_user_matches_filter_for_send(
-                    $completion,
-                    $cm,
-                    $user->id,
-                    $completionfilter
-                );
-                if ($matches === null) {
-                    continue;
-                }
+            $matches = local_learningjourney_user_matches_filter_for_send(
+                $completion,
+                $course,
+                $cm,
+                $user->id,
+                $completionfilter
+            );
+            if ($matches !== true) {
+                continue;
             }
             $recipients[$user->id] = $user;
         }

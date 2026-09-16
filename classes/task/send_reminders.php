@@ -104,14 +104,15 @@ class send_reminders extends \core\task\scheduled_task {
         $enrolledmanagerids = local_learningjourney_get_enrolled_manager_userids($users);
 
         foreach ($users as $user) {
-            if ($cm) {
-                $iscomplete = $this->user_matches_filter($completion, $cm, $user->id, $reminder->completionfilter, true);
-                if ($iscomplete === null) {
-                    continue;
-                }
-            } else {
-                // No specific activity: include every enrolled user.
-                $iscomplete = null;
+            $matches = \local_learningjourney_user_matches_filter_for_send(
+                $completion,
+                $course,
+                $cm,
+                (int)$user->id,
+                $reminder->completionfilter ?? 'all'
+            );
+            if ($matches !== true) {
+                continue;
             }
 
             if ($sendtostudents) {
@@ -217,29 +218,20 @@ class send_reminders extends \core\task\scheduled_task {
      * Decide if a user should receive this reminder based on completion filter.
      *
      * @param completion_info $completion
-     * @param \cm_info|\stdClass $cm
+     * @param \stdClass $course
+     * @param \cm_info|\stdClass|null $cm
      * @param int $userid
      * @param string $filter
-     * @return bool
+     * @return bool|null
      */
-    protected function user_matches_filter(completion_info $completion, $cm, int $userid, string $filter, bool $returnstate = false) {
-        if ($filter === 'all') {
-            return $returnstate ? true : true;
-        }
-
-        $data = $completion->get_data($cm, false, $userid);
-
-        $iscomplete = !empty($data) && !empty($data->completionstate);
-
-        if ($filter === 'completed' || $filter === 'oncomplete') {
-            return $returnstate ? $iscomplete : $iscomplete;
-        }
-
-        if ($filter === 'notcompleted') {
-            return $returnstate ? !$iscomplete : !$iscomplete;
-        }
-
-        return $returnstate ? null : false;
+    protected function user_matches_filter(
+        completion_info $completion,
+        \stdClass $course,
+        $cm,
+        int $userid,
+        string $filter
+    ) {
+        return \local_learningjourney_user_matches_filter_for_send($completion, $course, $cm, $userid, $filter);
     }
 
     /**
